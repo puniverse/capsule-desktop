@@ -1,0 +1,190 @@
+plugins {
+    id 'java'
+    id 'com.github.johnrengelman.shadow' version '1.2.1'
+    id 'maven'
+    id 'signing'
+}
+
+sourceCompatibility = '1.7'
+targetCompatibility = '1.7'
+
+group               = "co.paralleluniverse"
+version             = "0.1.0"
+status              = "integration"
+description         = "Turns capsules into native applications"
+ext.url             = "http://puniverse.github.com/capsule-desktop"
+ext.vendor          = "Parallel Universe Software Co."
+ext.licenseName     = "Eclipse Public License - v 1.0"
+ext.licenseUrl      = "http://www.eclipse.org/legal/epl-v10.html"
+ext.scmUrl          = "https://github.com/puniverse/capsule-desktop"
+ext.scmConnection   = "https://github.com/puniverse/capsule-desktop.git"
+ext.distDir         = "$buildDir/dist"
+ext.isReleaseVersion = !version.endsWith("SNAPSHOT")
+
+// User and Password are taken from ~/.gradle/gradle.properties
+if (!project.hasProperty("sonatypeUsername") || !project.hasProperty("sonatypePassword")) {
+    println "sonatype username or password not set"
+    ext.sonatypeUsername = ""
+    ext.sonatypePassword = ""
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+    maven { url 'https://repository.apache.org/content/groups/snapshots/' } // required for commons imaging
+}
+
+configurations {
+    capsule
+    provided
+}
+    
+sourceSets {
+    main.compileClasspath += configurations.provided
+    test.compileClasspath += configurations.provided
+    test.runtimeClasspath += configurations.provided
+}
+    
+dependencies {
+    capsule 'co.paralleluniverse:capsule:1.0-rc1-SNAPSHOT'
+    compile 'co.paralleluniverse:capsule:1.0-rc1-SNAPSHOT'
+    compile 'co.paralleluniverse:capsule-util:1.0-rc1-SNAPSHOT'
+    provided 'co.paralleluniverse:capsule-maven:1.0-rc1-SNAPSHOT'
+    // compile 'commons-io:commons-io:2.4'
+    compile('net.sf.launch4j:launch4j:3.5.0') {
+        exclude group: 'com.ibm.icu', module: 'icu4j'
+        exclude group: 'net.java.abeille', module: '*'
+        exclude group: 'org.apache.ant', module: '*'
+        exclude group: 'com.jgoodies', module: '*'
+        exclude group: 'foxtrot', module: '*'
+    }
+    // compile 'com.badlogicgames.packr:packr:1.2'
+    // compile 'org.apache.commons:commons-imaging:1.0-SNAPSHOT'
+    
+    testCompile 'junit:junit:4.11'
+}
+
+jar {
+    manifest {
+        attributes(
+	    'Main-Class'  : 'Capsule',
+            'Caplets'     : 'NativeCapsule'
+        )
+    }
+}
+
+shadowJar {
+    outputs.upToDateWhen { false }
+        
+    // artifactAttached = false
+    classifier = 'shadow'
+    destinationDir = file("$buildDir/libs")
+
+    // dependencies { exclude(dependency('co.paralleluniverse:capsule:.*')) }
+    
+    exclude 'META-INF/**'
+    exclude 'licenses/**' // licenses to thoughtworks CruiseControl, Javolution, and Indiana University Extreme! Labs, none of which are used by Capsule
+    exclude 'about.html'
+    exclude 'javax/inject/**'
+    exclude 'net/sf/launch4j/form/**'
+    exclude 'net/sf/launch4j/formimpl/**'
+    exclude 'images/**'
+    exclude 'LICENSE.txt'
+    exclude 'README.html'
+    exclude 'RELEASE-NOTES.txt'
+    exclude 'XMLPULL_1_1_3_1_VERSION'
+    exclude 'XPP3_1.1.4c_MIN_VERSION'
+
+//    relocate('org.', 'capsule.org.') {
+//        exclude 'org.w3c.'
+//    }
+    relocate 'org.apache.', 'capsule.org.apache.'
+    relocate 'org.xmlpull.', 'capsule.org.xmlpull.'
+    relocate 'io.', 'capsule.io.'
+    relocate 'com.', 'capsule.com.'
+    relocate 'net.', 'capsule.net.'
+    relocate 'foxtrot.', 'capsule.foxtrot.'
+            
+    doLast {
+        logger.info("$buildDir/libs/${project.name}-${project.version}-shadow.jar -> $buildDir/libs/${project.name}-${project.version}.jar")
+        file("$buildDir/libs/${project.name}-${version}-shadow.jar").renameTo(file("$buildDir/libs/${project.name}-${project.version}.jar"))
+    }
+}
+
+task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+artifacts {
+    archives jar
+    archives sourcesJar
+    archives javadocJar
+}
+
+signing {
+    required { isReleaseVersion && gradle.taskGraph.hasTask("uploadArchives") }
+    sign configurations.archives
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            beforeDeployment { deployment -> signing.signPom(deployment) }
+
+            repository(
+                url: (isReleaseVersion ?
+	                        "https://oss.sonatype.org/service/local/staging/deploy/maven2" :
+	                        "https://oss.sonatype.org/content/repositories/snapshots")) {
+                // User and Password are taken from ~/.gradle/gradle.properties
+                authentication(userName: project.sonatypeUsername, password: project.sonatypePassword)
+            }
+            pom.project {
+                name project.name
+                packaging 'jar'
+                description project.description
+                url project.url
+                scm {
+                    url project.scmUrl
+                    connection project.scmConnection
+                    developerConnection project.scmConnection
+                }
+                licenses {
+                    license {
+                        name project.licenseName
+                        url project.licenseUrl
+                        distribution 'repo'
+                    }
+                }
+                developers {
+                    developer {
+                        id 'pron'
+                        name 'Ron Pressler'
+                    }
+                }
+            }
+        }
+    }
+}
+
+[build, install, signArchives, uploadArchives]*.dependsOn shadowJar
+
+    
+install.repositories.mavenInstaller {
+    pom.whenConfigured {
+        it.dependencies.clear()
+    }
+}
+
+uploadArchives.repositories.mavenDeployer {
+    pom.whenConfigured {
+        it.dependencies.clear()
+    }
+}
+
+defaultTasks 'build'
