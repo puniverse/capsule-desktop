@@ -25,6 +25,8 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
+
 import net.sf.launch4j.Builder;
 import net.sf.launch4j.Log;
 import net.sf.launch4j.config.Config;
@@ -33,8 +35,11 @@ import net.sf.launch4j.config.Jre;
 import net.sf.launch4j.config.SingleInstance;
 import net.sf.launch4j.config.VersionInfo;
 
+/**
+ * Wrapping capsule that will build and launch a native desktop GUI or non-GUI app
+ */
 public class NativeCapsule extends Capsule {
-    private static final String PROP_VERSION = OPTION("capsule.build", "false", "build", true, "Builds the native application.");
+    // private static final String PROP_VERSION = OPTION("capsule.build", "false", "build", true, "Builds the native application.");
 
     protected static final Entry<String, Boolean> ATTR_GUI = ATTRIBUTE("GUI", T_BOOL(), false, true, "Whether or not this Capsule uses a GUI");
     protected static final Entry<String, String> ATTR_ICON = ATTRIBUTE("Icon", T_STRING(), null, true, "The path of the application's icon file(s), with no suffix, relative to the capsule root");
@@ -42,9 +47,16 @@ public class NativeCapsule extends Capsule {
 
     protected static final Entry<String, String> ATTR_IMPLEMENTATION_VENDOR = ATTRIBUTE("Implementation-Vendor", T_STRING(), null, true, null);
 
+    protected static final Entry<String, List<String>> ATTR_NATIVE_PLATFORMS = ATTRIBUTE("Native-Platforms", T_LIST(T_STRING()), null, true, "Native capsules to be built (defaults to current platform). One or more of: CURRENT, macos, linux, windows (currently supported only on Windows systems)");
+
+    protected static final Entry<String, String> ATTR_NATIVE_OUTPUT_BASE = ATTRIBUTE("Native-Output-Base", T_STRING(), null, true, "Output pathname for the native capsule (defaults to the capsule pathname itself minus the .jar extension)");
+
     private static final String GUI_CAPSULE_NAME = "GUICapsule";
     private static final String MAVEN_CAPSULE_NAME = "MavenCapsule";
     private static final String GUI_MAVEN_CAPSULE_NAME = "GUIMavenCapsule";
+
+    // http://stackoverflow.com/questions/5205339/regular-expression-matching-fully-qualified-java-classes
+    private static final Pattern JAVA_CLASS_NAME_REGEX = Pattern.compile("([\\p{L}_$][\\p{L}\\p{N}_$]*\\.)*[\\p{L}_$][\\p{L}\\p{N}_$]*");
 
     public NativeCapsule(Capsule pred) {
         super(pred);
@@ -54,15 +66,88 @@ public class NativeCapsule extends Capsule {
         super(jarFile);
     }
 
-    void build(List<String> args) {
-        final Path out = Paths.get(args.get(0));
+    @Override
+    protected Path getJavaExecutable() {
+        final String outBase = getOutputBase();
+        final String platform = getPlatform();
+        if ("macos".equals(platform))
+            return Paths.get(outBase + ".app").resolve("MacOS").resolve(getSimpleCapsuleName());
+        if ("windows".equals(platform))
+            return Paths.get(outBase + ".exe");
+        if ("linux".equals(platform))
+            return Paths.get(outBase);
+        else
+            throw new RuntimeException("Platform \"" + "\" is not supported");
+    }
+
+    @Override
+    protected ProcessBuilder prelaunch(List<String> jvmArgs, List<String> args) {
+        final ProcessBuilder pb = super.prelaunch(jvmArgs, args);
+
+        final String outBase = getOutputBase();
+        buildNative(outBase);
+
+        final List<String> postAppArgs = getAppArgs(pb.command());
+        final ProcessBuilder pb1 = new ProcessBuilder(pb.command().get(0));
+        pb1.command().addAll(postAppArgs);
+        return pb1;
+    }
+
+    private List<String> getAppArgs(List<String> command) {
+        final ArrayList<String> appArgs = new ArrayList<>();
+        boolean app = false;
+        for (final String a : command.subList(1, command.size())) {
+            if (app)
+                appArgs.add(a);
+            else if (isClassName(a))
+                app = true;
+        }
+
+        return appArgs;
+    }
+
+    private boolean isClassName(String a) {
+        return JAVA_CLASS_NAME_REGEX.matcher(a).matches();
+    }
+
+    private String getOutputBase() {
+        String outBase = getAttribute(ATTR_NATIVE_OUTPUT_BASE);
+        if (outBase == null) {
+            outBase = getJarFile().toAbsolutePath().normalize().toString();
+            if (outBase.toLowerCase().endsWith(".jar"))
+                outBase = outBase.substring(0, outBase.indexOf(".jar"));
+        }
+        return outBase;
+    }
+
+    private void buildNative(String outBase) {
         try {
-            buildWindowsApp(out);
-            buildLinuxApp(out);
-            buildMacApp(out);
+            List<String> platforms = getAttribute(ATTR_NATIVE_PLATFORMS);
+            if (platforms == null)
+                platforms = new ArrayList<>();
+            if (platforms.isEmpty()) {
+                platforms = new ArrayList<>(platforms);
+                platforms.add("CURRENT"); // Default
+            }
+
+            for (final String p : platforms)
+                buildApp(p, Paths.get(outBase));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private void buildApp(String platform, Path out) throws IOException {
+        if ("macos".equals(platform))
+            buildMacApp(out);
+        else if ("linux".equals(platform))
+            buildLinuxApp(out);
+        else if ("windows".equals(platform) && getPlatform().equals("windows") /* Check if really needed */)
+            buildWindowsApp(out);
+        else if ("CURRENT".equals(platform))
+            buildApp(getPlatform(), out);
+        else
+            throw new RuntimeException(("Platform \"" + platform + "\" is unsupported"));
     }
 
     private String getSimpleCapsuleName() {
@@ -117,7 +202,7 @@ public class NativeCapsule extends Capsule {
                 c.setSingleInstance(si);
             }
 
-            if (false) {
+            if (false) { // TODO Check
                 final VersionInfo versionInfo = new VersionInfo();
                 versionInfo.setProductName(getAttribute(ATTR_APP_NAME));
                 versionInfo.setCompanyName(getAttribute(ATTR_IMPLEMENTATION_VENDOR));
@@ -129,7 +214,7 @@ public class NativeCapsule extends Capsule {
             }
 
             if (hasAttribute(ATTR_ICON)) {
-                Path icon0 = verifyAppCache().resolve(getAttribute(ATTR_ICON) + ".ico");
+                Path icon0 = getWritableAppCache().resolve(getAttribute(ATTR_ICON) + ".ico");
                 if (Files.exists(icon0)) {
                     icon = Files.createTempFile("", ".ico");
                     Files.copy(icon0, icon);
@@ -235,7 +320,7 @@ public class NativeCapsule extends Capsule {
         final Path resources = contents.resolve("Resources");
         Files.createDirectory(resources);
         if (hasAttribute(ATTR_ICON)) {
-            final Path icon = verifyAppCache().resolve(getAttribute(ATTR_ICON) + ".icns");
+            final Path icon = getWritableAppCache().resolve(getAttribute(ATTR_ICON) + ".icns");
             if (Files.exists(icon))
                 Files.copy(icon, resources.resolve(icon.getFileName()));
         }
@@ -286,24 +371,30 @@ public class NativeCapsule extends Capsule {
     }
 
     private static Jar makeUnixExecutable(Jar jar) {
-        return jar.setJarPrefix("#!/bin/sh\n\nexec java -jar $0 \"$@\"\n");
+        final List<String> head = new ArrayList<>();
+        head.add("#!/bin/sh\n\nexec java");
+        head.add("-jar $0 \"$@\"\n");
+        return jar.setJarPrefix(String.join(" ", head));
     }
 
     private Jar makeGUICapsule(Jar jar) throws IOException {
         List<String> caplets = getAttribute(ATTR_CAPLETS);
+        //noinspection Convert2Diamond
         caplets = caplets == null ? new ArrayList<String>() : new ArrayList<String>(caplets);
 
         log(LOG_VERBOSE, "Adding caplet " + GUI_CAPSULE_NAME);
-        caplets.add(NativeCapsule.class.getName());
+        // caplets.add(NativeCapsule.class.getName());
         caplets.add(GUI_CAPSULE_NAME);
         if (hasCaplet(MAVEN_CAPSULE_NAME)) {
+            log(LOG_VERBOSE, "Removing caplet " + MAVEN_CAPSULE_NAME);
+            caplets.remove(MAVEN_CAPSULE_NAME);
             log(LOG_VERBOSE, "Adding caplet " + GUI_MAVEN_CAPSULE_NAME);
             caplets.add(GUI_MAVEN_CAPSULE_NAME);
         }
 
         jar.setListAttribute("Caplets", caplets);
 
-        jar.addClass(NativeCapsule.class);
+        // jar.addClass(NativeCapsule.class);
         jar.addClass(GUICapsule.class);
         if (hasCaplet(MAVEN_CAPSULE_NAME)) {
             jar.addEntry("GUIMavenCapsule.class", NativeCapsule.class.getResourceAsStream("GUIMavenCapsule.class"));
@@ -318,6 +409,7 @@ public class NativeCapsule extends Capsule {
 
     private static Path findOwnJarFile(Class clazz) {
         final URL url = clazz.getClassLoader().getResource(clazz.getName().replace('.', '/') + ".class");
+        assert url != null;
         if (!"jar".equals(url.getProtocol()))
             throw new AssertionError("Not in JAR");
         final String path = url.getPath();
@@ -348,8 +440,6 @@ public class NativeCapsule extends Capsule {
                     newPerms.add(PosixFilePermission.OWNER_EXECUTE);
                     Files.setPosixFilePermissions(file, newPerms);
                 }
-
-            } catch (UnsupportedOperationException e) {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

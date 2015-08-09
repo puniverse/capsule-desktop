@@ -17,6 +17,8 @@ import javax.swing.JOptionPane;
 public class GUICapsule extends Capsule {
     protected static final Entry<String, String> ATTR_SPLASH = ATTRIBUTE("Splash-Image", T_STRING(), null, true, "The path of the application's splash image, with no suffix, relative to the capsule root");
 
+    protected static final Entry<String, Boolean> ATTR_GUI = ATTRIBUTE("GUI", T_BOOL(), false, true, "Whether or not this Capsule uses a GUI");
+
     public GUICapsule(Capsule pred) {
         super(pred);
     }
@@ -26,7 +28,7 @@ public class GUICapsule extends Capsule {
     }
 
     boolean isGUI() {
-        return getAttribute(NativeCapsule.ATTR_GUI);
+        return getAttribute(ATTR_GUI);
     }
 
     @Override
@@ -59,7 +61,7 @@ public class GUICapsule extends Capsule {
         if (ATTR_JVM_ARGS == attr) {
             if (hasAttribute(ATTR_SPLASH)) {
                 final List<String> args = new ArrayList<>(super.attribute(ATTR_JVM_ARGS));
-                args.add("-spalsh:" + getAppCache().resolve(getAttribute(ATTR_SPLASH)));
+                args.add("-splash:" + getWritableAppCache().resolve(getAttribute(ATTR_SPLASH)));
                 return (T) args;
             }
         }
