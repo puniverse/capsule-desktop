@@ -71,7 +71,7 @@ public class NativeCapsule extends Capsule {
         final String outBase = getOutputBase();
         final String platform = getPlatform();
         if ("macos".equals(platform))
-            return Paths.get(outBase + ".app").resolve("MacOS").resolve(getSimpleCapsuleName());
+            return Paths.get(outBase + ".app").resolve("Contents").resolve("MacOS").resolve(getSimpleCapsuleName());
         if ("windows".equals(platform))
             return Paths.get(outBase + ".exe");
         if ("linux".equals(platform))
