@@ -47,7 +47,7 @@ public class NativeCapsule extends Capsule {
 
     protected static final Entry<String, String> ATTR_IMPLEMENTATION_VENDOR = ATTRIBUTE("Implementation-Vendor", T_STRING(), null, true, null);
 
-    protected static final Entry<String, List<String>> ATTR_NATIVE_PLATFORMS = ATTRIBUTE("Native-Platforms", T_LIST(T_STRING()), null, true, "Native capsules to be built (defaults to current platform). One or more of: CURRENT, macos, linux, windows (currently supported only on Windows systems)");
+    protected static final Entry<String, List<String>> ATTR_NATIVE_PLATFORMS = ATTRIBUTE("Native-Platforms", T_LIST(T_STRING()), null, true, "Native capsules to be built (defaults to current platform). One or more of: CURRENT, macos, linux, windows");
 
     protected static final Entry<String, String> ATTR_NATIVE_OUTPUT_BASE = ATTRIBUTE("Native-Output-Base", T_STRING(), null, true, "Output pathname for the native capsule (defaults to the capsule pathname itself minus the .jar extension)");
 
@@ -142,7 +142,7 @@ public class NativeCapsule extends Capsule {
             buildMacApp(out);
         else if ("linux".equals(platform))
             buildLinuxApp(out);
-        else if ("windows".equals(platform) && getPlatform().equals("windows") /* Check if really needed */)
+        else if ("windows".equals(platform))
             buildWindowsApp(out);
         else if ("CURRENT".equals(platform))
             buildApp(getPlatform(), out);
@@ -169,6 +169,7 @@ public class NativeCapsule extends Capsule {
     private Path buildWindowsApp(Path out) throws IOException {
         setLaunch4JBinDir();
         setLaunch4JLibDir();
+        setLaunch4JHeadDir();
         setLaunch4JTmpDir();
 
         Path tmpJar = null;
@@ -247,7 +248,7 @@ public class NativeCapsule extends Capsule {
             System.setProperty("launch4j.tmpdir", tmpdir.toString());
             return tmpdir;
         } catch (IOException e) {
-            throw new RuntimeException("Could not extract libraries necessary for building a Windows executable", e);
+            throw new RuntimeException("Could not create temporary directory necessary for building a Windows executable", e);
         }
     }
 
@@ -260,8 +261,24 @@ public class NativeCapsule extends Capsule {
 
             for (String filename : new String[]{
                 "crt2.o", "libadvapi32.a", "libgcc.a", "libkernel32.a", "libmingw32.a",
-                "libmingwex.a", "libmoldname.a", "libmsvcrt.a", "libshell32.a", "libuser32.a"})
+                "libmsvcrt.a", "libshell32.a", "libuser32.a"})
                 copy(filename, "w32api", libdir);
+
+            return libdir;
+        } catch (IOException e) {
+            throw new RuntimeException("Could not extract libraries necessary for building a Windows executable", e);
+        }
+    }
+
+    private Path setLaunch4JHeadDir() {
+        try {
+            final Path libdir = findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().resolve("head");
+            if(Files.exists(libdir))
+                delete(libdir);
+            addTempFile(Files.createDirectory(libdir));
+
+            for (final String filename : new String[] { "consolehead.o", "guihead.o", "head.o" } )
+                copy(filename, "head", libdir);
 
             return libdir;
         } catch (IOException e) {
@@ -271,15 +288,17 @@ public class NativeCapsule extends Capsule {
 
     private void setLaunch4JBinDir() {
         if (isMac())
-            copyBin("mac");
+            copyBin("mac", new String[]{"ld", "windres"});
         else if (!isWindows())
-            copyBin("linux");
+            copyBin("linux", new String[]{"ld", "windres"});
+        else
+            copyBin("windows", new String[]{"ld.exe", "windres.exe"});
     }
 
-    private Path copyBin(String os) {
+    private Path copyBin(String os, String[] bins) {
         try {
             final Path bindir = addTempFile(Files.createTempDirectory("capsule-launch4j-bin-"));
-            for (String filename : new String[]{"ld", "windres"})
+            for (String filename : bins)
                 ensureExecutable(copy(filename, "bin/" + os, bindir));
             System.setProperty("launch4j.bindir", bindir.toString());
             return bindir;
