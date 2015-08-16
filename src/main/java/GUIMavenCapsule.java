@@ -9,14 +9,19 @@
 import capsule.DependencyManager;
 import capsule.GUIDependencyManager;
 import capsule.GUIListener;
+
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 /**
  *
  * @author pron
  */
 public class GUIMavenCapsule extends MavenCapsule {
+
+    protected static final Map.Entry<String, String> ATTR_ICON = ATTRIBUTE("Icon", T_STRING(), null, true, "The path of the application's icon file(s), with no suffix, relative to the capsule root");
+
     public GUIMavenCapsule(Path jarFile) {
         super(jarFile);
     }
@@ -28,10 +33,10 @@ public class GUIMavenCapsule extends MavenCapsule {
     private GUIListener listener;
 
     @Override
-    protected ProcessBuilder prelaunch(List<String> args) {
-        this.listener = new GUIListener(getAttribute(ATTR_APP_NAME), getAttribute(NativeCapsule.ATTR_ICON));
+    protected ProcessBuilder prelaunch(List<String> args, List<String> jvmArgs) {
+        this.listener = new GUIListener(getAttribute(ATTR_APP_NAME), getAttribute(ATTR_ICON));
         try {
-            return super.prelaunch(args);
+            return super.prelaunch(args, jvmArgs);
         } finally {
             listener.dispose();
         }
@@ -39,7 +44,6 @@ public class GUIMavenCapsule extends MavenCapsule {
 
     @Override
     protected DependencyManager createDependencyManager(Path localRepo, boolean reset, int logLevel) {
-        // final GUICapsule gui = sup(GUICapsule.class);
         return new GUIDependencyManager(listener, localRepo, reset, logLevel);
     }
 }

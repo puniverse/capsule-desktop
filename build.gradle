@@ -9,7 +9,7 @@ sourceCompatibility = '1.7'
 targetCompatibility = '1.7'
 
 group               = "co.paralleluniverse"
-version             = "0.1.0"
+version             = "0.1.0-SNAPSHOT"
 status              = "integration"
 description         = "Turns capsules into native applications"
 ext.url             = "http://puniverse.github.com/capsule-desktop"
@@ -32,6 +32,7 @@ repositories {
     mavenCentral()
     mavenLocal()
     maven { url 'https://repository.apache.org/content/groups/snapshots/' } // required for commons imaging
+    maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
 }
 
 configurations {
@@ -46,10 +47,10 @@ sourceSets {
 }
     
 dependencies {
-    capsule 'co.paralleluniverse:capsule:1.0-rc1-SNAPSHOT'
-    compile 'co.paralleluniverse:capsule:1.0-rc1-SNAPSHOT'
-    compile 'co.paralleluniverse:capsule-util:1.0-rc1-SNAPSHOT'
-    provided 'co.paralleluniverse:capsule-maven:1.0-rc1-SNAPSHOT'
+    capsule 'co.paralleluniverse:capsule:1.0-rc2-SNAPSHOT'
+    compile 'co.paralleluniverse:capsule:1.0-rc2-SNAPSHOT'
+    compile 'co.paralleluniverse:capsule-util:1.0-rc2-SNAPSHOT'
+    provided 'co.paralleluniverse:capsule-maven:1.0-rc2-SNAPSHOT'
     // compile 'commons-io:commons-io:2.4'
     compile('net.sf.launch4j:launch4j:3.5.0') {
         exclude group: 'com.ibm.icu', module: 'icu4j'
@@ -61,7 +62,7 @@ dependencies {
     // compile 'com.badlogicgames.packr:packr:1.2'
     // compile 'org.apache.commons:commons-imaging:1.0-SNAPSHOT'
     
-    testCompile 'junit:junit:4.11'
+    testCompile 'junit:junit:4.12'
 }
 
 jar {
@@ -174,7 +175,6 @@ uploadArchives {
 
 [build, install, signArchives, uploadArchives]*.dependsOn shadowJar
 
-    
 install.repositories.mavenInstaller {
     pom.whenConfigured {
         it.dependencies.clear()
