@@ -9,6 +9,7 @@
 import capsule.GUIListener;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.*;
 import java.util.Map.Entry;
 import co.paralleluniverse.capsule.Jar;
 import java.io.InputStream;
@@ -21,10 +22,6 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.sf.launch4j.Builder;
@@ -390,10 +387,7 @@ public class NativeCapsule extends Capsule {
     }
 
     private static Jar makeUnixExecutable(Jar jar) {
-        final List<String> head = new ArrayList<>();
-        head.add("#!/bin/sh\n\nexec java");
-        head.add("-jar $0 \"$@\"\n");
-        return jar.setJarPrefix(String.join(" ", head));
+        return jar.setJarPrefix("#!/bin/sh\n\nexec java -jar $0 \"$@\"\n");
     }
 
     private Jar makeGUICapsule(Jar jar) throws IOException {
