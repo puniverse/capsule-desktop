@@ -44,9 +44,13 @@ public class NativeCapsule extends Capsule {
 
     protected static final Entry<String, String> ATTR_IMPLEMENTATION_VENDOR = ATTRIBUTE("Implementation-Vendor", T_STRING(), null, true, null);
 
-    protected static final Entry<String, List<String>> ATTR_NATIVE_PLATFORMS = ATTRIBUTE("Native-Platforms", T_LIST(T_STRING()), null, true, "Native capsules to be built (defaults to current platform). One or more of: CURRENT, macos, linux, windows");
+    protected static final Entry<String, List<String>> ATTR_PLATFORMS = ATTRIBUTE("Platforms", T_LIST(T_STRING()), null, true, "Native capsules to be built (defaults to current platform). One or more of: CURRENT, macos, linux, windows");
 
-    protected static final Entry<String, String> ATTR_NATIVE_OUTPUT_BASE = ATTRIBUTE("Native-Output-Base", T_STRING(), null, true, "Output pathname for the native capsule (defaults to the capsule pathname itself minus the .jar extension)");
+    protected static final Entry<String, String> ATTR_NATIVE_OUTPUT_PATHNAME = ATTRIBUTE("Native-Output-Pathname", T_STRING(), null, true, "Output pathname basis for the native capsule (defaults to the capsule pathname itself minus the .jar extension)");
+
+    protected static final Entry<String, String> ATTR_NATIVE_DESCRIPTION = ATTRIBUTE("Native-Description", T_STRING(), null, true, "File description of the native application");
+
+    protected static final Entry<String, String> ATTR_COPYRIGHT = ATTRIBUTE("Copyright", T_STRING(), null, true, "File description of the native application");
 
     private static final String GUI_CAPSULE_NAME = "GUICapsule";
     private static final String MAVEN_CAPSULE_NAME = "MavenCapsule";
@@ -108,7 +112,7 @@ public class NativeCapsule extends Capsule {
     }
 
     private String getOutputBase() {
-        String outBase = getAttribute(ATTR_NATIVE_OUTPUT_BASE);
+        String outBase = getAttribute(ATTR_NATIVE_OUTPUT_PATHNAME);
         if (outBase == null) {
             outBase = getJarFile().toAbsolutePath().normalize().toString();
             if (outBase.toLowerCase().endsWith(".jar"))
@@ -119,7 +123,7 @@ public class NativeCapsule extends Capsule {
 
     private void buildNative(String outBase) {
         try {
-            List<String> platforms = getAttribute(ATTR_NATIVE_PLATFORMS);
+            List<String> platforms = getAttribute(ATTR_PLATFORMS);
             if (platforms == null)
                 platforms = new ArrayList<>();
             if (platforms.isEmpty()) {
@@ -200,12 +204,14 @@ public class NativeCapsule extends Capsule {
                 c.setSingleInstance(si);
             }
 
-            if (false) { // TODO Check
+            if (getAttribute(ATTR_IMPLEMENTATION_VENDOR) != null) {
                 final VersionInfo versionInfo = new VersionInfo();
-                versionInfo.setProductName(getAttribute(ATTR_APP_NAME));
                 versionInfo.setCompanyName(getAttribute(ATTR_IMPLEMENTATION_VENDOR));
-                versionInfo.setFileVersion(verstionToWindowsVersion(getAttribute(ATTR_APP_VERSION)));
-                versionInfo.setProductVersion(verstionToWindowsVersion(getAttribute(ATTR_APP_VERSION)));
+                versionInfo.setProductName(getAttribute(ATTR_APP_NAME));
+                versionInfo.setFileVersion(versionToWindowsVersion(getAttribute(ATTR_APP_VERSION)));
+                versionInfo.setFileDescription(getAttribute(ATTR_NATIVE_DESCRIPTION));
+                versionInfo.setFileDescription(getAttribute(ATTR_COPYRIGHT));
+                versionInfo.setProductVersion(versionToWindowsVersion(getAttribute(ATTR_APP_VERSION)));
                 versionInfo.setTxtFileVersion(getAttribute(ATTR_APP_VERSION));
                 versionInfo.setTxtProductVersion(getAttribute(ATTR_APP_VERSION));
                 c.setVersionInfo(versionInfo);
@@ -233,7 +239,7 @@ public class NativeCapsule extends Capsule {
         }
     }
 
-    private static String verstionToWindowsVersion(String version) {
+    private static String versionToWindowsVersion(String version) {
         for (int count = version.split("\\.").length; count < 4; count++)
             version += ".0";
         return version;
@@ -252,7 +258,7 @@ public class NativeCapsule extends Capsule {
     private Path setLaunch4JLibDir() {
         try {
             final Path libdir = findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().resolve("w32api");
-            if(Files.exists(libdir))
+            if (Files.exists(libdir))
                 delete(libdir);
             addTempFile(Files.createDirectory(libdir));
 
@@ -395,12 +401,12 @@ public class NativeCapsule extends Capsule {
         //noinspection Convert2Diamond
         caplets = caplets == null ? new ArrayList<String>() : new ArrayList<String>(caplets);
 
-        log(LOG_VERBOSE, "Adding caplet " + GUI_CAPSULE_NAME);
+        log(LOG_VERBOSE, "Building GUI capsule");
         // caplets.add(NativeCapsule.class.getName());
         caplets.add(GUI_CAPSULE_NAME);
         if (hasCaplet(MAVEN_CAPSULE_NAME)) {
             log(LOG_VERBOSE, "Removing caplet " + MAVEN_CAPSULE_NAME);
-            caplets.remove(MAVEN_CAPSULE_NAME);
+            caplets.remove(MAVEN_CAPSULE_NAME); // Dependency resolution conflicts between them
             log(LOG_VERBOSE, "Adding caplet " + GUI_MAVEN_CAPSULE_NAME);
             caplets.add(GUI_MAVEN_CAPSULE_NAME);
         }
