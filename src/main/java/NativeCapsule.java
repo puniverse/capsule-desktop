@@ -50,7 +50,9 @@ public class NativeCapsule extends Capsule {
 
     protected static final Entry<String, String> ATTR_NATIVE_DESCRIPTION = ATTRIBUTE("Native-Description", T_STRING(), null, true, "File description of the native application");
 
-    protected static final Entry<String, String> ATTR_COPYRIGHT = ATTRIBUTE("Copyright", T_STRING(), null, true, "File description of the native application");
+    protected static final Entry<String, String> ATTR_COPYRIGHT = ATTRIBUTE("Copyright", T_STRING(), null, true, "Copyright notice");
+
+    protected static final Entry<String, String> ATTR_INTERNAL_NAME = ATTRIBUTE("Internal-Name", T_STRING(), null, true, "Internal native application name");
 
     private static final String GUI_CAPSULE_NAME = "GUICapsule";
     private static final String MAVEN_CAPSULE_NAME = "MavenCapsule";
@@ -210,7 +212,9 @@ public class NativeCapsule extends Capsule {
                 versionInfo.setProductName(getAttribute(ATTR_APP_NAME));
                 versionInfo.setFileVersion(versionToWindowsVersion(getAttribute(ATTR_APP_VERSION)));
                 versionInfo.setFileDescription(getAttribute(ATTR_NATIVE_DESCRIPTION));
-                versionInfo.setFileDescription(getAttribute(ATTR_COPYRIGHT));
+                versionInfo.setCopyright(getAttribute(ATTR_COPYRIGHT));
+                versionInfo.setInternalName(getAttribute(ATTR_INTERNAL_NAME));
+                versionInfo.setOriginalFilename(withSuffix(out, ".exe").toFile().getName());
                 versionInfo.setProductVersion(versionToWindowsVersion(getAttribute(ATTR_APP_VERSION)));
                 versionInfo.setTxtFileVersion(getAttribute(ATTR_APP_VERSION));
                 versionInfo.setTxtProductVersion(getAttribute(ATTR_APP_VERSION));
