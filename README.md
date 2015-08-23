@@ -8,5 +8,5 @@ This wrapper-only [Caplet](https://github.com/puniverse/capsule#what-are-caplets
   * `Icon`: the icon to be used for the desktop application.
   * `Platforms`: Native capsules to be built. One or more of: `CURRENT` (default), `macos`, `linux`, `windows`.
   * `Native-Output-Pathname`: output pathname to be used as a basis by the native capsule build(s) (defaults to the capsule pathname itself minus the `.jar` extension). The Windows build will append `.exe` and the Mac OS X one will append `.app` while the Linux one won't add any suffix.
-  * `Single-Instance`: if `true` will enforce a single-instance run policy for the native application built by `capsule-desktop`. Currently it only works on Mac OS X and Windows.
-  * `Implementation-Vendor`: the provider's or vendor's name to be included in native application metadata. If this attribute is present then `Native-Description` and `Copyright` are mandatory.
+  * `Single-Instance`: if `true` will enforce a single-instance run policy for the native application built by `capsule-desktop`. It currently only works on Mac OS X and Windows.
+  * `Implementation-Vendor`: the provider's or vendor's name to be included in the native application's metadata. If this attribute is present then `Native-Description`, `Copyright` and `Internal-Name` are mandatory. Native metadata is currently only supported on Windows.
