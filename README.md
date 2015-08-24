@@ -1,6 +1,20 @@
 # `capsule-desktop`
 
-This wrapper-only [Caplet](https://github.com/puniverse/capsule#what-are-caplets) will build native desktop wrappers based on [launch4j](http://launch4j.sourceforge.net/) for the capsule passed on the command line and will then run the native binary for the current platform (if found).
+This **wrapper-only** [Caplet](https://github.com/puniverse/capsule#what-are-caplets) will build native desktop wrappers based on [launch4j](http://launch4j.sourceforge.net/) for the capsule passed on the command line and will then run the native binary for the current platform (if found).
+
+## Usage
+
+Run the `capsule-desktop` JAR with your capsule as its command line argument (use `-Dcapsule.log=verbose` for more information about what Capsule is doing):
+
+``` bash
+$> java -Dcapsule.log=verbose -jar capsule-desktop-0.1.jar my-capsule.jar my-capsule-arg1 ...
+```
+
+The native application(s) will be built in the same directory as your capsule and the appropriate one for your system will be launched.
+
+An [example Java Swing application is available](https://github.com/puniverse/capsule-gui-demo) that can conveniently be used to try out `capsule-desktop`.
+
+The following section explains additional manifest entries to tailor `capsule-desktop`'s behaviour, including the platforms for which native binaries should be built.
 
 ## Additional Capsule manifest entries
 
