@@ -1,7 +1,6 @@
-# `capsule-desktop`
+# Capsule Desktop
 
-This **wrapper-only** [Caplet](https://github.com/puniverse/capsule#what-are-caplets) will build native desktop wrappers based on [launch4j](http://launch4j.sourceforge.net/) for the capsule passed on the command line and will then run the native binary for the current platform (if found).
-It can be run both against plain capsules and "fat" [Maven-based](https://github.com/puniverse/capsule-desktop) capsules.
+This **wrapper-only** [Caplet](https://github.com/puniverse/capsule#what-are-caplets) will build native desktop wrappers based on [launch4j](http://launch4j.sourceforge.net/) for the [capsule](https://github.com/puniverse/capsule) passed on the command line and will then run the native binary for the current platform (if found).
 
 ## Usage
 
@@ -10,6 +9,8 @@ Run the `capsule-desktop` JAR with your capsule as its command line argument (us
 ``` bash
 $> java -Dcapsule.log=verbose -jar capsule-desktop-0.1.jar my-capsule.jar my-capsule-arg1 ...
 ```
+
+It can be run both against plain (e.g. "fat") capsules and [Maven-based](https://github.com/puniverse/capsule-desktop) ones.
 
 The native application(s) will be built in the same directory as your capsule and the appropriate one for your system will be launched.
 
@@ -25,3 +26,12 @@ The following section explains additional manifest entries to tailor `capsule-de
   * `Native-Output-Pathname`: output pathname to be used as a basis by the native capsule build(s) (defaults to the capsule pathname itself minus the `.jar` extension). The Windows build will append `.exe` and the Mac OS X one will append `.app` while the Linux one won't add any suffix.
   * `Single-Instance`: if `true` will enforce a single-instance run policy for the native application built by `capsule-desktop`. It currently only works on Mac OS X and Windows.
   * `Implementation-Vendor`: the provider's or vendor's name to be included in the native application's metadata. If this attribute is present then `Native-Description`, `Copyright` and `Internal-Name` are mandatory. Native metadata is currently only supported on Windows.
+
+## License
+
+    Copyright (c) 2014-2015, Parallel Universe Software Co. and Contributors. All rights reserved.
+
+    This program and the accompanying materials are licensed under the terms
+    of the Eclipse Public License v1.0 as published by the Eclipse Foundation.
+
+        http://www.eclipse.org/legal/epl-v10.html
