@@ -1,6 +1,7 @@
 # `capsule-desktop`
 
 This **wrapper-only** [Caplet](https://github.com/puniverse/capsule#what-are-caplets) will build native desktop wrappers based on [launch4j](http://launch4j.sourceforge.net/) for the capsule passed on the command line and will then run the native binary for the current platform (if found).
+It can be run both against plain capsules and "fat" [Maven-based](https://github.com/puniverse/capsule-desktop) capsules.
 
 ## Usage
 
