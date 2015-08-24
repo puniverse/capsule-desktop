@@ -7,7 +7,7 @@ This **wrapper-only** [Caplet](https://github.com/puniverse/capsule#what-are-cap
 Run the `capsule-desktop` JAR with your capsule as its command line argument (use `-Dcapsule.log=verbose` for more information about what Capsule is doing):
 
 ``` bash
-$> java -Dcapsule.log=verbose -jar capsule-desktop-0.1.jar my-capsule.jar my-capsule-arg1 ...
+$ java -Dcapsule.log=verbose -jar capsule-desktop-0.1.jar my-capsule.jar my-capsule-arg1 ...
 ```
 
 It can be run both against plain (e.g. "fat") capsules and [Maven-based](https://github.com/puniverse/capsule-desktop) ones.
