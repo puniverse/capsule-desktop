@@ -40,6 +40,8 @@ import static java.util.Arrays.*;
  * Wrapping capsule that will build and launch a native desktop GUI or non-GUI app
  */
 public class NativeCapsule {
+	// TODO Logging
+
 	// private static final String PROP_VERSION = OPTION("capsule.build", "false", "build", true, "Builds the native application.");
 
 	protected static final String ATTR_GUI = "GUI";
@@ -107,11 +109,11 @@ public class NativeCapsule {
 		try {
 			final List<String> platforms = new ArrayList<>();
 			if (buildMac)
-				platforms.add("macos");
+				platforms.add(Platform.OS_MACOS);
 			if (buildLinux)
-				platforms.add("linux");
+				platforms.add(Platform.OS_LINUX);
 			if (buildWindows)
-				platforms.add("windows");
+				platforms.add(Platform.OS_WINDOWS);
 
 			if (platforms.isEmpty())
 				platforms.add("CURRENT"); // Default
@@ -124,16 +126,16 @@ public class NativeCapsule {
 	}
 
 	private static void buildApp(String platform, Path out) throws IOException {
-		if ("macos".equals(platform))
+		if (Platform.OS_MACOS.equals(platform))
 			buildMacApp(out);
-		else if ("linux".equals(platform))
+		else if (Platform.OS_LINUX.equals(platform))
 			buildLinuxApp(out);
-		else if ("windows".equals(platform))
+		else if (Platform.OS_WINDOWS.equals(platform))
 			buildWindowsApp(out);
 		else if ("CURRENT".equals(platform))
 			buildApp(Platform.myPlatform().getOS(), out);
 		else
-			throw new RuntimeException(("Platform \"" + platform + "\" is unsupported"));
+			throw new RuntimeException("Platform \"" + platform + "\" is unsupported");
 	}
 
 	private static String getSimpleCapsuleName() {
@@ -433,7 +435,8 @@ public class NativeCapsule {
 	}
 
 	private static Path withSuffix(Path path, String suffix) {
-		return path.getFileName().toString().endsWith(suffix) ? path : path.toAbsolutePath().getParent().resolve(path.getFileName().toString() + suffix);
+		return path.getFileName().toString().endsWith(suffix) ?
+			path : path.toAbsolutePath().getParent().resolve(path.getFileName().toString() + suffix);
 	}
 
 	private static Path findOwnJarFile(Class clazz) {
@@ -455,7 +458,7 @@ public class NativeCapsule {
 
 	protected static void copy(InputStream is, OutputStream out) throws IOException {
 		final byte[] buffer = new byte[1024];
-		for (int bytesRead; (bytesRead = is.read(buffer)) != -1; )
+		for (int bytesRead ; (bytesRead = is.read(buffer)) != -1 ; )
 			out.write(buffer, 0, bytesRead);
 		out.flush();
 	}
