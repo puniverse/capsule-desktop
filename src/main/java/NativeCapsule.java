@@ -72,14 +72,14 @@ public class NativeCapsule {
 		parser.acceptsAll(asList("h", "?", "help"), "Show help").forHelp();
 		final OptionSet options = parser.parse(args);
 
-		if (!options.has(c)) {
+		if (!options.has(c) || options.valuesOf(c).size() != 1 || options.valuesOf(o).size() > 1) {
 			parser.printHelpOn(System.err);
 			System.exit(-1);
 		}
 
-		inCapsulePath = Paths.get(options.valuesOf(c).get(0)); // TODO handle edge cases
-		inCapsule = new CapsuleLauncher(inCapsulePath).newCapsule(); // TODO handle edge cases
-		outCapsuleBasePath = options.valuesOf(o).get(0); // TODO handle edge cases
+		inCapsulePath = Paths.get(options.valuesOf(c).get(0));
+		inCapsule = new CapsuleLauncher(inCapsulePath).newCapsule();
+		outCapsuleBasePath = options.valuesOf(o).size() == 1 ? options.valuesOf(o).get(0) : getOutputBase();
 		buildMac = options.has("m") || options.has("macosx");
 		buildLinux = options.has("l") || options.has("linux");
 		buildWindows = options.has("w") || options.has("windows");
@@ -87,6 +87,10 @@ public class NativeCapsule {
 		buildNative();
 		for (final Path p : tmpFiles)
 			Capsule.delete(p);
+	}
+
+	private static String getOutputBase() {
+		return getOutputBase(null);
 	}
 
 	private static String getOutputBase(String outBase) {
@@ -127,7 +131,7 @@ public class NativeCapsule {
 		else if ("windows".equals(platform))
 			buildWindowsApp(out);
 		else if ("CURRENT".equals(platform))
-			buildApp(Platform.myPlatform().toString(), out);
+			buildApp(Platform.myPlatform().getOS(), out);
 		else
 			throw new RuntimeException(("Platform \"" + platform + "\" is unsupported"));
 	}
@@ -145,7 +149,9 @@ public class NativeCapsule {
 	}
 
 	private static boolean isGUIApp() {
-		return inCapsule.<Boolean>getAttribute(Attribute.<Boolean>named(ATTR_GUI));
+		if (inCapsule.hasAttribute(Attribute.<Boolean>named(ATTR_GUI)))
+			return inCapsule.getAttribute(Attribute.<Boolean>named(ATTR_GUI));
+		return false;
 	}
 
 	private static Path buildWindowsApp(Path out) throws IOException {
@@ -178,17 +184,17 @@ public class NativeCapsule {
 			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_JDK_REQUIRED.getKey())))
 				c.getJre().setJdkPreference(inCapsule.<Boolean>getAttribute(Attribute.<Boolean>named(Capsule.ATTR_JDK_REQUIRED.getKey())) ? Jre.JDK_PREFERENCE_JDK_ONLY : null);
 
-			if (inCapsule.<Boolean>getAttribute(Attribute.<Boolean>named(ATTR_SINGLE_INSTANCE))) {
+			if (inCapsule.hasAttribute(Attribute.<Boolean>named(ATTR_SINGLE_INSTANCE)) && inCapsule.getAttribute(Attribute.<Boolean>named(ATTR_SINGLE_INSTANCE))) {
 				final SingleInstance si = new SingleInstance();
 				si.setWindowTitle(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_APP_NAME.getKey())));
 				si.setMutexName(inCapsule.getAppId());
 				c.setSingleInstance(si);
 			}
 
-			if (inCapsule.getAttribute(Attribute.named(ATTR_IMPLEMENTATION_VENDOR)) != null
-				|| inCapsule.getAttribute(Attribute.named(ATTR_NATIVE_DESCRIPTION)) != null
-				|| inCapsule.getAttribute(Attribute.named(ATTR_COPYRIGHT)) != null
-				|| inCapsule.getAttribute(Attribute.named(ATTR_INTERNAL_NAME)) != null) {
+			if (inCapsule.getAttribute(Attribute.<String>named(ATTR_IMPLEMENTATION_VENDOR)) != null
+				|| inCapsule.getAttribute(Attribute.<String>named(ATTR_NATIVE_DESCRIPTION)) != null
+				|| inCapsule.getAttribute(Attribute.<String>named(ATTR_COPYRIGHT)) != null
+				|| inCapsule.getAttribute(Attribute.<String>named(ATTR_INTERNAL_NAME)) != null) {
 
 				final VersionInfo versionInfo = new VersionInfo();
 				versionInfo.setCompanyName(inCapsule.getAttribute(Attribute.<String>named(ATTR_IMPLEMENTATION_VENDOR)));
@@ -204,7 +210,7 @@ public class NativeCapsule {
 				c.setVersionInfo(versionInfo);
 			}
 
-			if (inCapsule.hasAttribute(Attribute.named(ATTR_ICON))) {
+			if (inCapsule.hasAttribute(Attribute.<String>named(ATTR_ICON))) {
 				final URLClassLoader urlClassLoader = new URLClassLoader( new URL[] { jar.toUri().toURL() } );
 				InputStream input = null;
 				try {
@@ -221,7 +227,7 @@ public class NativeCapsule {
 				}
 			}
 
-			final Builder builder = new Builder(Log.getConsoleLog());
+			final Builder builder = new Builder(Log.getConsoleLog(), findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().toFile());
 			builder.build();
 			return out;
 		} catch (Exception e) {
