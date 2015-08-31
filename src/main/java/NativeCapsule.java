@@ -7,466 +7,471 @@
  */
 
 import capsule.GUIListener;
+import co.paralleluniverse.capsule.*;
+import net.sf.launch4j.Builder;
+import net.sf.launch4j.Log;
+import net.sf.launch4j.config.*;
+
 import java.io.IOException;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.Map.Entry;
-import co.paralleluniverse.capsule.Jar;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
-import java.util.regex.Pattern;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
 
-import net.sf.launch4j.Builder;
-import net.sf.launch4j.Log;
-import net.sf.launch4j.config.Config;
-import net.sf.launch4j.config.ConfigPersister;
-import net.sf.launch4j.config.Jre;
-import net.sf.launch4j.config.SingleInstance;
-import net.sf.launch4j.config.VersionInfo;
+import joptsimple.OptionParser;
+import joptsimple.OptionSet;
+import joptsimple.OptionSpec;
+
+import static java.util.Arrays.*;
 
 /**
  * Wrapping capsule that will build and launch a native desktop GUI or non-GUI app
  */
-public class NativeCapsule extends Capsule {
-    // private static final String PROP_VERSION = OPTION("capsule.build", "false", "build", true, "Builds the native application.");
+public class NativeCapsule {
+	// private static final String PROP_VERSION = OPTION("capsule.build", "false", "build", true, "Builds the native application.");
 
-    protected static final Entry<String, Boolean> ATTR_GUI = ATTRIBUTE("GUI", T_BOOL(), false, true, "Whether or not this Capsule uses a GUI");
-    protected static final Entry<String, String> ATTR_ICON = ATTRIBUTE("Icon", T_STRING(), null, true, "The path of the application's icon file(s), with no suffix, relative to the capsule root");
-    protected static final Entry<String, Boolean> ATTR_SINGLE_INSTANCE = ATTRIBUTE("Single-Instance", T_BOOL(), false, true, "Whether or not the application should only have a single running instance at a time");
+	protected static final String ATTR_GUI = "GUI";
+	protected static final String ATTR_ICON = "Icon";
+	protected static final String ATTR_SINGLE_INSTANCE = "Single-Instance";
 
-    protected static final Entry<String, String> ATTR_IMPLEMENTATION_VENDOR = ATTRIBUTE("Implementation-Vendor", T_STRING(), null, true, null);
+	protected static final String ATTR_IMPLEMENTATION_VENDOR = "Implementation-Vendor";
 
-    protected static final Entry<String, List<String>> ATTR_PLATFORMS = ATTRIBUTE("Platforms", T_LIST(T_STRING()), null, true, "Native capsules to be built (defaults to current platform). One or more of: CURRENT, macos, linux, windows");
+	protected static final String ATTR_NATIVE_DESCRIPTION = "Native-Description";
+	protected static final String ATTR_COPYRIGHT = "Copyright";
+	protected static final String ATTR_INTERNAL_NAME = "Internal-Name";
 
-    protected static final Entry<String, String> ATTR_NATIVE_OUTPUT_PATHNAME = ATTRIBUTE("Native-Output-Pathname", T_STRING(), null, true, "Output pathname basis for the native capsule (defaults to the capsule pathname itself minus the .jar extension)");
+	private static final String GUI_CAPSULE_NAME = "GUICapsule";
+	private static final String MAVEN_CAPSULE_NAME = "MavenCapsule";
+	private static final String GUI_MAVEN_CAPSULE_NAME = "GUIMavenCapsule";
 
-    protected static final Entry<String, String> ATTR_NATIVE_DESCRIPTION = ATTRIBUTE("Native-Description", T_STRING(), null, true, "File description of the native application");
+	private static List<Path> tmpFiles = new ArrayList<>();
+	private static Path inCapsulePath;
+	private static String outCapsuleBasePath;
+	private static co.paralleluniverse.capsule.Capsule inCapsule;
+	private static boolean buildMac, buildLinux, buildWindows;
 
-    protected static final Entry<String, String> ATTR_COPYRIGHT = ATTRIBUTE("Copyright", T_STRING(), null, true, "Copyright notice");
+	public static void main(String[] args) throws IOException {
+		final OptionParser parser = new OptionParser();
+		final OptionSpec<String> c = parser.acceptsAll(asList("c", "capsule")).withRequiredArg().ofType(String.class).describedAs("A single capsule pathname to build native binaries for");
+		final OptionSpec<String> o = parser.acceptsAll(asList("o", "output")).withRequiredArg().ofType(String.class).describedAs("The base output pathname of built binaries");
+		parser.acceptsAll(asList("m", "macosx"), "Build Mac OS X binary");
+		parser.acceptsAll(asList("l", "linux"), "Build Linux binary");
+		parser.acceptsAll(asList("w", "windows"), "Build Windows binary");
+		parser.acceptsAll(asList("h", "?", "help"), "Show help").forHelp();
+		final OptionSet options = parser.parse(args);
 
-    protected static final Entry<String, String> ATTR_INTERNAL_NAME = ATTRIBUTE("Internal-Name", T_STRING(), null, true, "Internal native application name");
+		if (!options.has(c)) {
+			parser.printHelpOn(System.err);
+			System.exit(-1);
+		}
 
-    private static final String GUI_CAPSULE_NAME = "GUICapsule";
-    private static final String MAVEN_CAPSULE_NAME = "MavenCapsule";
-    private static final String GUI_MAVEN_CAPSULE_NAME = "GUIMavenCapsule";
+		inCapsulePath = Paths.get(options.valuesOf(c).get(0)); // TODO handle edge cases
+		inCapsule = new CapsuleLauncher(inCapsulePath).newCapsule(); // TODO handle edge cases
+		outCapsuleBasePath = options.valuesOf(o).get(0); // TODO handle edge cases
+		buildMac = options.has("m") || options.has("macosx");
+		buildLinux = options.has("l") || options.has("linux");
+		buildWindows = options.has("w") || options.has("windows");
 
-    // http://stackoverflow.com/questions/5205339/regular-expression-matching-fully-qualified-java-classes
-    private static final Pattern JAVA_CLASS_NAME_REGEX = Pattern.compile("([\\p{L}_$][\\p{L}\\p{N}_$]*\\.)*[\\p{L}_$][\\p{L}\\p{N}_$]*");
+		buildNative();
+		for (final Path p : tmpFiles)
+			Capsule.delete(p);
+	}
 
-    public NativeCapsule(Capsule pred) {
-        super(pred);
-    }
+	private static String getOutputBase(String outBase) {
+		if (outBase == null) {
+			outBase = inCapsulePath.toAbsolutePath().normalize().toString();
+			if (outBase.toLowerCase().endsWith(".jar"))
+				outBase = outBase.substring(0, outBase.indexOf(".jar"));
+		}
+		return outBase;
+	}
 
-    public NativeCapsule(Path jarFile) {
-        super(jarFile);
-    }
+	private static void buildNative() {
+		final String outBase = getOutputBase(outCapsuleBasePath);
+		try {
+			final List<String> platforms = new ArrayList<>();
+			if (buildMac)
+				platforms.add("macos");
+			if (buildLinux)
+				platforms.add("linux");
+			if (buildWindows)
+				platforms.add("windows");
 
-    @Override
-    protected Path getJavaExecutable() {
-        final String outBase = getOutputBase();
-        final String platform = getPlatform();
-        if ("macos".equals(platform))
-            return Paths.get(outBase + ".app").resolve("Contents").resolve("MacOS").resolve(getSimpleCapsuleName());
-        if ("windows".equals(platform))
-            return Paths.get(outBase + ".exe");
-        if ("linux".equals(platform))
-            return Paths.get(outBase);
-        else
-            throw new RuntimeException("Platform \"" + "\" is not supported");
-    }
+			if (platforms.isEmpty())
+				platforms.add("CURRENT"); // Default
 
-    @Override
-    protected ProcessBuilder prelaunch(List<String> jvmArgs, List<String> args) {
-        final ProcessBuilder pb = super.prelaunch(jvmArgs, args);
+			for (final String p : platforms)
+				buildApp(p, Paths.get(outBase));
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
 
-        final String outBase = getOutputBase();
-        buildNative(outBase);
+	private static void buildApp(String platform, Path out) throws IOException {
+		if ("macos".equals(platform))
+			buildMacApp(out);
+		else if ("linux".equals(platform))
+			buildLinuxApp(out);
+		else if ("windows".equals(platform))
+			buildWindowsApp(out);
+		else if ("CURRENT".equals(platform))
+			buildApp(Platform.myPlatform().toString(), out);
+		else
+			throw new RuntimeException(("Platform \"" + platform + "\" is unsupported"));
+	}
 
-        final List<String> postAppArgs = getAppArgs(pb.command());
-        final ProcessBuilder pb1 = new ProcessBuilder(pb.command().get(0));
-        pb1.command().addAll(postAppArgs);
-        return pb1;
-    }
+	private static String getSimpleCapsuleName() {
+		final String filename = inCapsulePath.getFileName().toString();
+		return filename.endsWith(".jar") ? filename.substring(0, filename.length() - 4) : filename;
+	}
 
-    private List<String> getAppArgs(List<String> command) {
-        final ArrayList<String> appArgs = new ArrayList<>();
-        boolean app = false;
-        for (final String a : command.subList(1, command.size())) {
-            if (app)
-                appArgs.add(a);
-            else if (isClassName(a))
-                app = true;
-        }
+	private static Jar createJar(Path out) throws IOException {
+		final Jar jar = new Jar(inCapsulePath);
+		if (out != null)
+			jar.setOutput(out);
+		return jar;
+	}
 
-        return appArgs;
-    }
+	private static boolean isGUIApp() {
+		return inCapsule.<Boolean>getAttribute(Attribute.<Boolean>named(ATTR_GUI));
+	}
 
-    private boolean isClassName(String a) {
-        return JAVA_CLASS_NAME_REGEX.matcher(a).matches();
-    }
+	private static Path buildWindowsApp(Path out) throws IOException {
+		setLaunch4JBinDir();
+		setLaunch4JLibDir();
+		setLaunch4JHeadDir();
+		setLaunch4JTmpDir();
 
-    private String getOutputBase() {
-        String outBase = getAttribute(ATTR_NATIVE_OUTPUT_PATHNAME);
-        if (outBase == null) {
-            outBase = getJarFile().toAbsolutePath().normalize().toString();
-            if (outBase.toLowerCase().endsWith(".jar"))
-                outBase = outBase.substring(0, outBase.indexOf(".jar"));
-        }
-        return outBase;
-    }
+		Path tmpJar = null;
+		Path icon = null;
+		try {
+			if (isGUIApp()) {
+				tmpJar = Files.createTempFile("native-capsule-", ".jar");
+				Jar j = createJar(tmpJar);
+				makeGUICapsule(j);
+				j.close();
+			}
+			final Path jar = tmpJar != null ? tmpJar : inCapsulePath;
 
-    private void buildNative(String outBase) {
-        try {
-            List<String> platforms = getAttribute(ATTR_PLATFORMS);
-            if (platforms == null)
-                platforms = new ArrayList<>();
-            if (platforms.isEmpty()) {
-                platforms = new ArrayList<>(platforms);
-                platforms.add("CURRENT"); // Default
-            }
+			ConfigPersister.getInstance().createBlank();
+			final Config c = ConfigPersister.getInstance().getConfig();
+			c.setHeaderType(isGUIApp() ? Config.GUI_HEADER : Config.CONSOLE_HEADER);
+			c.setOutfile(withSuffix(out, ".exe").toFile());
+			c.setJar(jar.toFile());
 
-            for (final String p : platforms)
-                buildApp(p, Paths.get(outBase));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
+			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_MIN_JAVA_VERSION.getKey())))
+				c.getJre().setMinVersion(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_MIN_JAVA_VERSION.getKey())));
+			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_JAVA_VERSION.getKey())))
+				c.getJre().setMaxVersion(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_JAVA_VERSION.getKey())));
+			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_JDK_REQUIRED.getKey())))
+				c.getJre().setJdkPreference(inCapsule.<Boolean>getAttribute(Attribute.<Boolean>named(Capsule.ATTR_JDK_REQUIRED.getKey())) ? Jre.JDK_PREFERENCE_JDK_ONLY : null);
 
-    private void buildApp(String platform, Path out) throws IOException {
-        if ("macos".equals(platform))
-            buildMacApp(out);
-        else if ("linux".equals(platform))
-            buildLinuxApp(out);
-        else if ("windows".equals(platform))
-            buildWindowsApp(out);
-        else if ("CURRENT".equals(platform))
-            buildApp(getPlatform(), out);
-        else
-            throw new RuntimeException(("Platform \"" + platform + "\" is unsupported"));
-    }
+			if (inCapsule.<Boolean>getAttribute(Attribute.<Boolean>named(ATTR_SINGLE_INSTANCE))) {
+				final SingleInstance si = new SingleInstance();
+				si.setWindowTitle(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_APP_NAME.getKey())));
+				si.setMutexName(inCapsule.getAppId());
+				c.setSingleInstance(si);
+			}
 
-    private String getSimpleCapsuleName() {
-        final String filename = getJarFile().getFileName().toString();
-        return filename.endsWith(".jar") ? filename.substring(0, filename.length() - 4) : filename;
-    }
+			if (inCapsule.getAttribute(Attribute.named(ATTR_IMPLEMENTATION_VENDOR)) != null
+				|| inCapsule.getAttribute(Attribute.named(ATTR_NATIVE_DESCRIPTION)) != null
+				|| inCapsule.getAttribute(Attribute.named(ATTR_COPYRIGHT)) != null
+				|| inCapsule.getAttribute(Attribute.named(ATTR_INTERNAL_NAME)) != null) {
 
-    private Jar createJar(Path out) throws IOException {
-        final Jar jar = new Jar(getJarFile());
-        if (out != null)
-            jar.setOutput(out);
-        return jar;
-    }
+				final VersionInfo versionInfo = new VersionInfo();
+				versionInfo.setCompanyName(inCapsule.getAttribute(Attribute.<String>named(ATTR_IMPLEMENTATION_VENDOR)));
+				versionInfo.setProductName(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_APP_NAME.getKey())));
+				versionInfo.setFileVersion(versionToWindowsVersion(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_APP_VERSION.getKey()))));
+				versionInfo.setFileDescription(inCapsule.getAttribute(Attribute.<String>named(ATTR_NATIVE_DESCRIPTION)));
+				versionInfo.setCopyright(inCapsule.getAttribute(Attribute.<String>named(ATTR_COPYRIGHT)));
+				versionInfo.setInternalName(inCapsule.getAttribute(Attribute.<String>named(ATTR_INTERNAL_NAME)));
+				versionInfo.setOriginalFilename(withSuffix(out, ".exe").toFile().getName());
+				versionInfo.setProductVersion(versionToWindowsVersion(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_APP_VERSION.getKey()))));
+				versionInfo.setTxtFileVersion(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_APP_VERSION.getKey())));
+				versionInfo.setTxtProductVersion(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_APP_VERSION.getKey())));
+				c.setVersionInfo(versionInfo);
+			}
 
-    private boolean isGUIApp() {
-        return getAttribute(ATTR_GUI);
-    }
+			if (inCapsule.hasAttribute(Attribute.named(ATTR_ICON))) {
+				final URLClassLoader urlClassLoader = new URLClassLoader( new URL[] { jar.toUri().toURL() } );
+				InputStream input = null;
+				try {
+					input = urlClassLoader.getResourceAsStream(inCapsule.getAttribute(Attribute.<String>named(ATTR_ICON)));
+				} catch (Throwable ignored) {}
+				if (input != null) {
+					try {
+						icon = Files.createTempFile("", ".ico");
+						Files.copy(input, icon);
+						c.setIcon(icon.toFile());
+					} finally {
+						input.close();
+					}
+				}
+			}
 
-    private Path buildWindowsApp(Path out) throws IOException {
-        setLaunch4JBinDir();
-        setLaunch4JLibDir();
-        setLaunch4JHeadDir();
-        setLaunch4JTmpDir();
+			final Builder builder = new Builder(Log.getConsoleLog());
+			builder.build();
+			return out;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		} finally {
+			if (tmpJar != null)
+				Files.delete(tmpJar);
+			if (icon != null)
+				Files.delete(icon);
+		}
+	}
 
-        Path tmpJar = null;
-        Path icon = null;
-        try {
-            if (isGUIApp()) {
-                tmpJar = Files.createTempFile("native-capsule-", ".jar");
-                Jar j = createJar(tmpJar);
-                makeGUICapsule(j);
-                j.close();
-            }
-            final Path jar = tmpJar != null ? tmpJar : getJarFile();
+	private static String versionToWindowsVersion(String version) {
+		for (int count = version.split("\\.").length; count < 4; count++)
+			version += ".0";
+		return version;
+	}
 
-            ConfigPersister.getInstance().createBlank();
-            final Config c = ConfigPersister.getInstance().getConfig();
-            c.setHeaderType(isGUIApp() ? Config.GUI_HEADER : Config.CONSOLE_HEADER);
-            c.setOutfile(withSuffix(out, ".exe").toFile());
-            c.setJar(jar.toFile());
+	private static Path setLaunch4JTmpDir() {
+		try {
+			final Path tmpdir = addTempFile(Files.createTempDirectory("capsule-launch4j-tmp-"));
+			System.setProperty("launch4j.tmpdir", tmpdir.toString());
+			return tmpdir;
+		} catch (IOException e) {
+			throw new RuntimeException("Could not create temporary directory necessary for building a Windows executable", e);
+		}
+	}
 
-            if (hasAttribute(ATTR_MIN_JAVA_VERSION))
-                c.getJre().setMinVersion(getAttribute(ATTR_MIN_JAVA_VERSION));
-            if (hasAttribute(ATTR_JAVA_VERSION))
-                c.getJre().setMaxVersion(getAttribute(ATTR_JAVA_VERSION));
-            if (hasAttribute(ATTR_JDK_REQUIRED))
-                c.getJre().setJdkPreference(getAttribute(ATTR_JDK_REQUIRED) ? Jre.JDK_PREFERENCE_JDK_ONLY : null);
+	private static Path setLaunch4JLibDir() {
+		try {
+			final Path libdir = findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().resolve("w32api");
+			if (Files.exists(libdir))
+				Capsule.delete(libdir);
+			addTempFile(Files.createDirectory(libdir));
 
-            if (getAttribute(ATTR_SINGLE_INSTANCE)) {
-                final SingleInstance si = new SingleInstance();
-                si.setWindowTitle(getAttribute(ATTR_APP_NAME));
-                si.setMutexName(getAppId());
-                c.setSingleInstance(si);
-            }
+			for (String filename : new String[]{
+				"crt2.o", "libadvapi32.a", "libgcc.a", "libkernel32.a", "libmingw32.a",
+				"libmsvcrt.a", "libshell32.a", "libuser32.a"})
+				copy(filename, "w32api", libdir);
 
-            if (getAttribute(ATTR_IMPLEMENTATION_VENDOR) != null) {
-                final VersionInfo versionInfo = new VersionInfo();
-                versionInfo.setCompanyName(getAttribute(ATTR_IMPLEMENTATION_VENDOR));
-                versionInfo.setProductName(getAttribute(ATTR_APP_NAME));
-                versionInfo.setFileVersion(versionToWindowsVersion(getAttribute(ATTR_APP_VERSION)));
-                versionInfo.setFileDescription(getAttribute(ATTR_NATIVE_DESCRIPTION));
-                versionInfo.setCopyright(getAttribute(ATTR_COPYRIGHT));
-                versionInfo.setInternalName(getAttribute(ATTR_INTERNAL_NAME));
-                versionInfo.setOriginalFilename(withSuffix(out, ".exe").toFile().getName());
-                versionInfo.setProductVersion(versionToWindowsVersion(getAttribute(ATTR_APP_VERSION)));
-                versionInfo.setTxtFileVersion(getAttribute(ATTR_APP_VERSION));
-                versionInfo.setTxtProductVersion(getAttribute(ATTR_APP_VERSION));
-                c.setVersionInfo(versionInfo);
-            }
+			return libdir;
+		} catch (IOException e) {
+			throw new RuntimeException("Could not extract libraries necessary for building a Windows executable", e);
+		}
+	}
 
-            if (hasAttribute(ATTR_ICON)) {
-                Path icon0 = getWritableAppCache().resolve(getAttribute(ATTR_ICON) + ".ico");
-                if (Files.exists(icon0)) {
-                    icon = Files.createTempFile("", ".ico");
-                    Files.copy(icon0, icon);
-                    c.setIcon(icon.toFile());
-                }
-            }
+	private static Path setLaunch4JHeadDir() {
+		try {
+			final Path libdir = findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().resolve("head");
+			if (Files.exists(libdir))
+				Capsule.delete(libdir);
+			addTempFile(Files.createDirectory(libdir));
 
-            final Builder builder = new Builder(Log.getConsoleLog());
-            builder.build();
-            return out;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        } finally {
-            if (tmpJar != null)
-                Files.delete(tmpJar);
-            if (icon != null)
-                Files.delete(icon);
-        }
-    }
+			for (final String filename : new String[]{"consolehead.o", "guihead.o", "head.o"})
+				copy(filename, "head", libdir);
 
-    private static String versionToWindowsVersion(String version) {
-        for (int count = version.split("\\.").length; count < 4; count++)
-            version += ".0";
-        return version;
-    }
+			return libdir;
+		} catch (IOException e) {
+			throw new RuntimeException("Could not extract libraries necessary for building a Windows executable", e);
+		}
+	}
 
-    private Path setLaunch4JTmpDir() {
-        try {
-            final Path tmpdir = addTempFile(Files.createTempDirectory("capsule-launch4j-tmp-"));
-            System.setProperty("launch4j.tmpdir", tmpdir.toString());
-            return tmpdir;
-        } catch (IOException e) {
-            throw new RuntimeException("Could not create temporary directory necessary for building a Windows executable", e);
-        }
-    }
+	private static void setLaunch4JBinDir() {
+		if (Platform.myPlatform().isMac())
+			copyBin("mac", new String[]{"ld", "windres"});
+		else if (Platform.myPlatform().toString().contains("linux")) // TODO Expand Platform a bit
+			copyBin("linux", new String[]{"ld", "windres"});
+		else if (Platform.myPlatform().isWindows())
+			copyBin("windows", new String[]{"ld.exe", "windres.exe"});
+		else
+			throw new RuntimeException(Platform.myPlatform() + " is not supported");
+	}
 
-    private Path setLaunch4JLibDir() {
-        try {
-            final Path libdir = findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().resolve("w32api");
-            if (Files.exists(libdir))
-                delete(libdir);
-            addTempFile(Files.createDirectory(libdir));
+	private static Path copyBin(String os, String[] bins) {
+		try {
+			final Path bindir = addTempFile(Files.createTempDirectory("capsule-launch4j-bin-"));
+			for (String filename : bins)
+				ensureExecutable(copy(filename, "bin/" + os, bindir));
+			System.setProperty("launch4j.bindir", bindir.toString());
+			return bindir;
+		} catch (IOException e) {
+			throw new RuntimeException("Could not extract binaries necessary for building a Windows executable", e);
+		}
+	}
 
-            for (String filename : new String[]{
-                "crt2.o", "libadvapi32.a", "libgcc.a", "libkernel32.a", "libmingw32.a",
-                "libmsvcrt.a", "libshell32.a", "libuser32.a"})
-                copy(filename, "w32api", libdir);
+	private static Path copy(String filename, String resourceDir, Path targetDir) throws IOException {
+		try (InputStream in = NativeCapsule.class.getClassLoader().getResourceAsStream(resourceDir + '/' + filename);
+		     OutputStream out = Files.newOutputStream(targetDir.resolve(filename))) {
+			copy(in, out);
+			return targetDir.resolve(filename);
+		}
+	}
 
-            return libdir;
-        } catch (IOException e) {
-            throw new RuntimeException("Could not extract libraries necessary for building a Windows executable", e);
-        }
-    }
+	private static Path buildLinuxApp(Path out) throws IOException {
+		final Jar jar = createJar(out);
+		makeUnixExecutable(jar);
+		if (isGUIApp())
+			makeGUICapsule(jar);
+		jar.close();
+		ensureExecutable(out);
+		return out;
+	}
 
-    private Path setLaunch4JHeadDir() {
-        try {
-            final Path libdir = findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().resolve("head");
-            if(Files.exists(libdir))
-                delete(libdir);
-            addTempFile(Files.createDirectory(libdir));
+	private static Path buildMacApp(Path out) throws IOException {
+		out = withSuffix(out, ".app");
+		Capsule.delete(out);
+		Files.createDirectory(out);
 
-            for (final String filename : new String[] { "consolehead.o", "guihead.o", "head.o" } )
-                copy(filename, "head", libdir);
+		final Path contents = out.resolve("Contents");
+		Files.createDirectory(contents);
+		try (PrintWriter info = new PrintWriter(Files.newBufferedWriter(contents.resolve("Info.plist"), Charset.forName("UTF-8")))) {
+			writeInfo(info);
+		}
 
-            return libdir;
-        } catch (IOException e) {
-            throw new RuntimeException("Could not extract libraries necessary for building a Windows executable", e);
-        }
-    }
+		final Path resources = contents.resolve("Resources");
+		Files.createDirectory(resources);
+		final Path macos = contents.resolve("MacOS");
+		Files.createDirectory(macos);
+		final Path outJarPath = macos.resolve(getSimpleCapsuleName());
+		final Jar jar = createJar(outJarPath);
+		if (inCapsule.hasAttribute(Attribute.named(ATTR_ICON))) {
+			final URLClassLoader urlClassLoader = new URLClassLoader( new URL[] { outJarPath.toUri().toURL() } );
+			InputStream input = null;
+			String resName = null;
+			try {
+				resName = inCapsule.getAttribute(Attribute.<String>named(ATTR_ICON)) + ".icns";
+				input = urlClassLoader.getResourceAsStream(resName);
+			} catch (Throwable ignored) {}
+			if (resName != null && input != null) {
+				try {
+					Files.copy(input, resources.resolve(resName));
+				} finally {
+					input.close();
+				}
+			}
+		}
+		makeUnixExecutable(jar);
+		if (isGUIApp())
+			makeGUICapsule(jar);
+		jar.close();
+		ensureExecutable(outJarPath);
+		return out;
+	}
 
-    private void setLaunch4JBinDir() {
-        if (isMac())
-            copyBin("mac", new String[]{"ld", "windres"});
-        else if (!isWindows())
-            copyBin("linux", new String[]{"ld", "windres"});
-        else
-            copyBin("windows", new String[]{"ld.exe", "windres.exe"});
-    }
+	private static void writeInfo(PrintWriter out) {
+		out.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+		out.println("<!DOCTYPE plist PUBLIC \"-//Apple Computer//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">");
+		out.println("<plist version=\"1.0\">");
+		out.println("<dict>");
+		out.println("  <key>CFBundleGetInfoString</key>");
+		out.println("  <string>" + getSimpleCapsuleName() + "</string>");
+		out.println("  <key>CFBundleExecutable</key>");
+		out.println("  <string>" + getSimpleCapsuleName() + "</string>");
+		out.println("  <key>CFBundleIdentifier</key>");
+		out.println("  <string>" + inCapsule.getAttribute(Attribute.named(Capsule.ATTR_APP_NAME.getKey())) + "</string>");
+		out.println("  <key>CFBundleName</key>");
+		out.println("  <string>" + inCapsule.getAttribute(Attribute.named(Capsule.ATTR_APP_NAME.getKey())) + "</string>");
+		if (inCapsule.hasAttribute(Attribute.named(ATTR_ICON))) {
+			out.println("  <key>CFBundleIconFile</key>");
+			out.println("  <string>" + inCapsule.getAttribute(Attribute.named(ATTR_ICON)) + "</string>");
+		}
+		if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_APP_VERSION.getKey()))) {
+			out.println("  <key>CFBundleShortVersionString</key>");
+			out.println("  <string>" + inCapsule.getAttribute(Attribute.named(Capsule.ATTR_APP_VERSION.getKey())) + "</string>");
+		}
+		out.println("  <key>CFBundleShortVersionString</key>");
+		out.println("  <string>1.0</string>");
+		out.println("  <key>CFBundleInfoDictionaryVersion</key>");
+		out.println("  <string>6.0</string>");
+		out.println("  <key>CFBundlePackageType</key>");
+		out.println("  <string>APPL</string>");
+		out.println("  <key>CFBundleSignature</key>");
+		out.println("  <string>????</string>");
+		out.println("</dict>");
+		out.println("</plist>");
+	}
 
-    private Path copyBin(String os, String[] bins) {
-        try {
-            final Path bindir = addTempFile(Files.createTempDirectory("capsule-launch4j-bin-"));
-            for (String filename : bins)
-                ensureExecutable(copy(filename, "bin/" + os, bindir));
-            System.setProperty("launch4j.bindir", bindir.toString());
-            return bindir;
-        } catch (IOException e) {
-            throw new RuntimeException("Could not extract binaries necessary for building a Windows executable", e);
-        }
-    }
+	private static Jar makeUnixExecutable(Jar jar) {
+		return jar.setJarPrefix("#!/bin/sh\n\nexec java -jar $0 \"$@\"\n");
+	}
 
-    private static Path copy(String filename, String resourceDir, Path targetDir) throws IOException {
-        try (InputStream in = NativeCapsule.class.getClassLoader().getResourceAsStream(resourceDir + '/' + filename);
-             OutputStream out = Files.newOutputStream(targetDir.resolve(filename))) {
-            copy(in, out);
-            return targetDir.resolve(filename);
-        }
-    }
+	private static Jar makeGUICapsule(Jar jar) throws IOException {
+		List<String> caplets = inCapsule.getAttribute(Attribute.<List<String>>named(Capsule.ATTR_CAPLETS.getKey()));
+		//noinspection Convert2Diamond
+		caplets = caplets == null ? new ArrayList<String>() : new ArrayList<String>(caplets);
 
-    private Path buildLinuxApp(Path out) throws IOException {
-        final Jar jar = createJar(out);
-        makeUnixExecutable(jar);
-        if (isGUIApp())
-            makeGUICapsule(jar);
-        jar.close();
-        ensureExecutable(out);
-        return out;
-    }
+		// caplets.add(NativeCapsule.class.getName());
+		caplets.add(GUI_CAPSULE_NAME);
+		if (inCapsule.hasCaplet(MAVEN_CAPSULE_NAME)) {
+			caplets.remove(MAVEN_CAPSULE_NAME); // Dependency resolution conflicts between them
+			caplets.add(GUI_MAVEN_CAPSULE_NAME);
+		}
 
-    private Path buildMacApp(Path out) throws IOException {
-        out = withSuffix(out, ".app");
-        delete(out);
-        Files.createDirectory(out);
+		jar.setListAttribute("Caplets", caplets);
 
-        final Path contents = out.resolve("Contents");
-        Files.createDirectory(contents);
-        try (PrintWriter info = new PrintWriter(Files.newBufferedWriter(contents.resolve("Info.plist"), Charset.forName("UTF-8")))) {
-            writeInfo(info);
-        }
+		// jar.addClass(NativeCapsule.class);
+		jar.addClass(GUICapsule.class);
+		if (inCapsule.hasCaplet(MAVEN_CAPSULE_NAME)) {
+			jar.addEntry("GUIMavenCapsule.class", NativeCapsule.class.getResourceAsStream("GUIMavenCapsule.class"));
+			jar.addPackageOf(GUIListener.class, Jar.matches("capsule/((GUIDependencyManager)|(GUIListener)).*"));
+		}
+		return jar;
+	}
 
-        final Path resources = contents.resolve("Resources");
-        Files.createDirectory(resources);
-        if (hasAttribute(ATTR_ICON)) {
-            final Path icon = getWritableAppCache().resolve(getAttribute(ATTR_ICON) + ".icns");
-            if (Files.exists(icon))
-                Files.copy(icon, resources.resolve(icon.getFileName()));
-        }
+	private static Path withSuffix(Path path, String suffix) {
+		return path.getFileName().toString().endsWith(suffix) ? path : path.toAbsolutePath().getParent().resolve(path.getFileName().toString() + suffix);
+	}
 
-        final Path macos = contents.resolve("MacOS");
-        Files.createDirectory(macos);
-        final Path outJarPath = macos.resolve(getSimpleCapsuleName());
-        final Jar jar = createJar(outJarPath);
-        makeUnixExecutable(jar);
-        if (isGUIApp())
-            makeGUICapsule(jar);
-        jar.close();
-        ensureExecutable(outJarPath);
-        return out;
-    }
+	private static Path findOwnJarFile(Class clazz) {
+		final URL url = clazz.getClassLoader().getResource(clazz.getName().replace('.', '/') + ".class");
+		assert url != null;
+		if (!"jar".equals(url.getProtocol()))
+			throw new AssertionError("Not in JAR");
+		final String path = url.getPath();
+		if (path == null || !path.startsWith("file:"))
+			throw new IllegalStateException("Not in a local JAR file; loaded from: " + url);
 
-    private void writeInfo(PrintWriter out) {
-        out.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-        out.println("<!DOCTYPE plist PUBLIC \"-//Apple Computer//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">");
-        out.println("<plist version=\"1.0\">");
-        out.println("<dict>");
-        out.println("  <key>CFBundleGetInfoString</key>");
-        out.println("  <string>" + getSimpleCapsuleName() + "</string>");
-        out.println("  <key>CFBundleExecutable</key>");
-        out.println("  <string>" + getSimpleCapsuleName() + "</string>");
-        out.println("  <key>CFBundleIdentifier</key>");
-        out.println("  <string>" + getAttribute(ATTR_APP_NAME) + "</string>");
-        out.println("  <key>CFBundleName</key>");
-        out.println("  <string>" + getAttribute(ATTR_APP_NAME) + "</string>");
-        if (hasAttribute(ATTR_ICON)) {
-            out.println("  <key>CFBundleIconFile</key>");
-            out.println("  <string>" + getAttribute(ATTR_ICON) + "</string>");
-        }
-        if (hasAttribute(ATTR_APP_VERSION)) {
-            out.println("  <key>CFBundleShortVersionString</key>");
-            out.println("  <string>" + getAttribute(ATTR_APP_VERSION) + "</string>");
-        }
-        out.println("  <key>CFBundleShortVersionString</key>");
-        out.println("  <string>1.0</string>");
-        out.println("  <key>CFBundleInfoDictionaryVersion</key>");
-        out.println("  <string>6.0</string>");
-        out.println("  <key>CFBundlePackageType</key>");
-        out.println("  <string>APPL</string>");
-        out.println("  <key>CFBundleSignature</key>");
-        out.println("  <string>????</string>");
-        out.println("</dict>");
-        out.println("</plist>");
-    }
+		try {
+			final URI jarUri = new URI(path.substring(0, path.indexOf('!')));
+			return Paths.get(jarUri);
+		} catch (URISyntaxException e) {
+			throw new AssertionError(e);
+		}
+	}
 
-    private static Jar makeUnixExecutable(Jar jar) {
-        return jar.setJarPrefix("#!/bin/sh\n\nexec java -jar $0 \"$@\"\n");
-    }
+	protected static void copy(InputStream is, OutputStream out) throws IOException {
+		final byte[] buffer = new byte[1024];
+		for (int bytesRead; (bytesRead = is.read(buffer)) != -1; )
+			out.write(buffer, 0, bytesRead);
+		out.flush();
+	}
 
-    private Jar makeGUICapsule(Jar jar) throws IOException {
-        List<String> caplets = getAttribute(ATTR_CAPLETS);
-        //noinspection Convert2Diamond
-        caplets = caplets == null ? new ArrayList<String>() : new ArrayList<String>(caplets);
+	private static Path ensureExecutable(Path file) {
+		if (!Files.isExecutable(file)) {
+			try {
+				Set<PosixFilePermission> perms = Files.getPosixFilePermissions(file);
+				if (!perms.contains(PosixFilePermission.OWNER_EXECUTE)) {
+					Set<PosixFilePermission> newPerms = EnumSet.copyOf(perms);
+					newPerms.add(PosixFilePermission.OWNER_EXECUTE);
+					Files.setPosixFilePermissions(file, newPerms);
+				}
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+		}
+		return file;
+	}
 
-        log(LOG_VERBOSE, "Building GUI capsule");
-        // caplets.add(NativeCapsule.class.getName());
-        caplets.add(GUI_CAPSULE_NAME);
-        if (hasCaplet(MAVEN_CAPSULE_NAME)) {
-            log(LOG_VERBOSE, "Removing caplet " + MAVEN_CAPSULE_NAME);
-            caplets.remove(MAVEN_CAPSULE_NAME); // Dependency resolution conflicts between them
-            log(LOG_VERBOSE, "Adding caplet " + GUI_MAVEN_CAPSULE_NAME);
-            caplets.add(GUI_MAVEN_CAPSULE_NAME);
-        }
-
-        jar.setListAttribute("Caplets", caplets);
-
-        // jar.addClass(NativeCapsule.class);
-        jar.addClass(GUICapsule.class);
-        if (hasCaplet(MAVEN_CAPSULE_NAME)) {
-            jar.addEntry("GUIMavenCapsule.class", NativeCapsule.class.getResourceAsStream("GUIMavenCapsule.class"));
-            jar.addPackageOf(GUIListener.class, Jar.matches("capsule/((GUIDependencyManager)|(GUIListener)).*"));
-        }
-        return jar;
-    }
-
-    private static Path withSuffix(Path path, String suffix) {
-        return path.getFileName().toString().endsWith(suffix) ? path : path.toAbsolutePath().getParent().resolve(path.getFileName().toString() + suffix);
-    }
-
-    private static Path findOwnJarFile(Class clazz) {
-        final URL url = clazz.getClassLoader().getResource(clazz.getName().replace('.', '/') + ".class");
-        assert url != null;
-        if (!"jar".equals(url.getProtocol()))
-            throw new AssertionError("Not in JAR");
-        final String path = url.getPath();
-        if (path == null || !path.startsWith("file:"))
-            throw new IllegalStateException("Not in a local JAR file; loaded from: " + url);
-
-        try {
-            final URI jarUri = new URI(path.substring(0, path.indexOf('!')));
-            return Paths.get(jarUri);
-        } catch (URISyntaxException e) {
-            throw new AssertionError(e);
-        }
-    }
-
-    protected static void copy(InputStream is, OutputStream out) throws IOException {
-        final byte[] buffer = new byte[1024];
-        for (int bytesRead; (bytesRead = is.read(buffer)) != -1;)
-            out.write(buffer, 0, bytesRead);
-        out.flush();
-    }
-
-    private static Path ensureExecutable(Path file) {
-        if (!Files.isExecutable(file)) {
-            try {
-                Set<PosixFilePermission> perms = Files.getPosixFilePermissions(file);
-                if (!perms.contains(PosixFilePermission.OWNER_EXECUTE)) {
-                    Set<PosixFilePermission> newPerms = EnumSet.copyOf(perms);
-                    newPerms.add(PosixFilePermission.OWNER_EXECUTE);
-                    Files.setPosixFilePermissions(file, newPerms);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        return file;
-    }
+	public static Path addTempFile(Path file) {
+		tmpFiles.add(file);
+		return file;
+	}
 }

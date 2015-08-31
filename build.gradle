@@ -1,6 +1,5 @@
 plugins {
     id 'java'
-    id 'com.github.johnrengelman.shadow' version '1.2.1'
     id 'maven'
     id 'signing'
 }
@@ -29,8 +28,8 @@ if (!project.hasProperty("sonatypeUsername") || !project.hasProperty("sonatypePa
 }
 
 repositories {
+	mavenLocal()
     mavenCentral()
-    mavenLocal()
     maven { url 'https://repository.apache.org/content/groups/snapshots/' } // required for commons imaging
     maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
 }
@@ -47,10 +46,8 @@ sourceSets {
 }
 
 dependencies {
-    capsule 'co.paralleluniverse:capsule:1.0-rc2-SNAPSHOT'
-    compile 'co.paralleluniverse:capsule:1.0-rc2-SNAPSHOT'
     compile 'co.paralleluniverse:capsule-util:1.0-rc2-SNAPSHOT'
-    provided 'co.paralleluniverse:capsule-maven:1.0-rc2-SNAPSHOT'
+    compile 'net.sf.jopt-simple:jopt-simple:4.9'
     // compile 'commons-io:commons-io:2.4'
     compile('net.sf.launch4j:launch4j:3.5.0') {
         exclude group: 'com.ibm.icu', module: 'icu4j'
@@ -62,53 +59,43 @@ dependencies {
     // compile 'com.badlogicgames.packr:packr:1.2'
     // compile 'org.apache.commons:commons-imaging:1.0-SNAPSHOT'
 
-    testCompile 'junit:junit:4.12'
+    provided 'co.paralleluniverse:capsule-maven:1.0-rc2-SNAPSHOT'
+
+	capsule 'co.paralleluniverse:capsule:1.0-rc2-SNAPSHOT'
+	capsule 'co.paralleluniverse:capsule-maven:1.0-rc2-SNAPSHOT'
+
+	testCompile 'junit:junit:4.12'
 }
 
-jar {
-    manifest {
-        attributes(
-            'Main-Class'  : 'Capsule',
-            'Caplets'     : 'NativeCapsule'
-        )
+def getDependencies(config) {
+    return config.getAllDependencies().collect {
+        def res = it.group + ':' + it.name + ':' + it.version + (!it.artifacts.isEmpty() ? ':' + it.artifacts.iterator().next().classifier : '')
+        if(!it.excludeRules.isEmpty()) {
+            res += "(" + it.excludeRules.collect { it.group + ':' + it.module }.join(',') + ")"
+        }
+        return res
     }
 }
 
-shadowJar {
-    outputs.upToDateWhen { false }
+task capsule(type: Jar, dependsOn: classes) {
+    archiveName = "capsule-desktop.jar"
 
-    // artifactAttached = false
-    classifier = 'shadow'
-    destinationDir = file("$buildDir/libs")
+    from sourceSets.main.output // this way we don't need to extract
 
-    // dependencies { exclude(dependency('co.paralleluniverse:capsule:.*')) }
+    from { configurations.capsule.collect { zipTree(it) } } // we need all of Capsule's classes
 
-    exclude 'META-INF/**'
-    exclude 'licenses/**' // licenses to thoughtworks CruiseControl, Javolution, and Indiana University Extreme! Labs, none of which are used by Capsule
-    exclude 'about.html'
-    exclude 'javax/inject/**'
-    exclude 'net/sf/launch4j/form/**'
-    exclude 'net/sf/launch4j/formimpl/**'
-    exclude 'images/**'
-    exclude 'LICENSE.txt'
-    exclude 'README.html'
-    exclude 'RELEASE-NOTES.txt'
-    exclude 'XMLPULL_1_1_3_1_VERSION'
-    exclude 'XPP3_1.1.4c_MIN_VERSION'
-
-//    relocate('org.', 'capsule.org.') {
-//        exclude 'org.w3c.'
-//    }
-    relocate 'org.apache.', 'capsule.org.apache.'
-    relocate 'org.xmlpull.', 'capsule.org.xmlpull.'
-    relocate 'io.', 'capsule.io.'
-    relocate 'com.', 'capsule.com.'
-    relocate 'net.', 'capsule.net.'
-    relocate 'foxtrot.', 'capsule.foxtrot.'
-
-    doLast {
-        logger.info("$buildDir/libs/${project.name}-${project.version}-shadow.jar -> $buildDir/libs/${project.name}-${project.version}.jar")
-        file("$buildDir/libs/${project.name}-${version}-shadow.jar").renameTo(file("$buildDir/libs/${project.name}-${project.version}.jar"))
+    manifest {
+        attributes(
+            'Premain-Class'     : 'Capsule',
+            'Main-Class'        : 'Capsule',
+            'Application-Class' : 'NativeCapsule',
+            'Application-Version' : version,
+            'Extract-Capsule'   : 'false', // don't extract capsule to the filesystem
+            'Min-Java-Version'  : '1.7.0',
+            'Dependencies'      : getDependencies(configurations.runtime).join(' '),
+            'Repositories'      : 'central local https://oss.sonatype.org/content/repositories/snapshots',
+            'Caplets'           : 'MavenCapsule'
+        )
     }
 }
 
@@ -167,13 +154,17 @@ uploadArchives {
                         id 'pron'
                         name 'Ron Pressler'
                     }
+                    developer {
+                        id 'circlespainter'
+                        name 'Fabio Tudone'
+                    }
                 }
             }
         }
     }
 }
 
-[build, install, signArchives, uploadArchives]*.dependsOn shadowJar
+[build, install, signArchives, uploadArchives]*.dependsOn capsule
 
 install.repositories.mavenInstaller {
     pom.whenConfigured {
