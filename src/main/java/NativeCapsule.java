@@ -87,6 +87,7 @@ public class NativeCapsule {
 		inCapsulePath = Paths.get(options.valueOf(c));
 		log.debug("Input capsule: {}", inCapsulePath.toAbsolutePath().normalize().toString());
 		inCapsule = new CapsuleLauncher(inCapsulePath).newCapsule();
+		outBasePath = options.valuesOf(o).size() == 1 ? options.valueOf(o) : getOutputBase();
 		log.debug("Output binary prefix: {}", outBasePath);
 		buildMac = options.has("m") || options.has("macosx");
 		buildUnix = options.has("u") || options.has("unix");
@@ -163,8 +164,11 @@ public class NativeCapsule {
 	}
 
 	private static boolean isGUIApp() {
-		if (inCapsule.hasAttribute(Attribute.<Boolean>named(ATTR_GUI)))
-			return inCapsule.getAttribute(Attribute.<Boolean>named(ATTR_GUI));
+		if (inCapsule.hasAttribute(Attribute.<String>named(ATTR_GUI))) {
+			try {
+				return Boolean.parseBoolean(inCapsule.getAttribute(Attribute.<String>named(ATTR_GUI)));
+			} catch (Throwable ignored) {}
+		}
 		return false;
 	}
 
@@ -211,17 +215,22 @@ public class NativeCapsule {
 			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_JDK_REQUIRED.getKey()))) {
 				final String jdkPreference = inCapsule.<Boolean>getAttribute(Attribute.<Boolean>named(Capsule.ATTR_JDK_REQUIRED.getKey())) ?
 					Jre.JDK_PREFERENCE_JDK_ONLY : null;
-				log.debug("Windows: JDK preferred? {}", Jre.JDK_PREFERENCE_JDK_ONLY.equals(jdkPreference) ? "true" : "false");
 				log.debug("Windows: JDK preferred = {}", Jre.JDK_PREFERENCE_JDK_ONLY.equals(jdkPreference) ? "true" : "false");
 				c.getJre().setJdkPreference(jdkPreference);
 			}
 
-			if (inCapsule.hasAttribute(Attribute.<Boolean>named(ATTR_SINGLE_INSTANCE)) && inCapsule.getAttribute(Attribute.<Boolean>named(ATTR_SINGLE_INSTANCE))) {
-				log.debug("Windows: restricting to single instance as requested");
-				final SingleInstance si = new SingleInstance();
-				si.setWindowTitle(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_APP_NAME.getKey())));
-				si.setMutexName(inCapsule.getAppId());
-				c.setSingleInstance(si);
+			if (inCapsule.hasAttribute(Attribute.<String>named(ATTR_SINGLE_INSTANCE))) {
+				boolean singleInstance = false;
+				try {
+					singleInstance = Boolean.parseBoolean(inCapsule.getAttribute(Attribute.<String>named(ATTR_SINGLE_INSTANCE)));
+				} catch (Throwable ignored) {}
+				if (singleInstance) {
+					log.debug("Windows: restricting to single instance as requested");
+					final SingleInstance si = new SingleInstance();
+					si.setWindowTitle(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_APP_NAME.getKey())));
+					si.setMutexName(inCapsule.getAppId());
+					c.setSingleInstance(si);
+				}
 			}
 
 			if (inCapsule.getAttribute(Attribute.<String>named(ATTR_IMPLEMENTATION_VENDOR)) != null
@@ -245,25 +254,39 @@ public class NativeCapsule {
 			}
 
 			if (inCapsule.hasAttribute(Attribute.<String>named(ATTR_ICON))) {
-				final URLClassLoader urlClassLoader = new URLClassLoader( new URL[] { jar.toUri().toURL() } );
+				final URLClassLoader urlClassLoader = new URLClassLoader( new URL[] { inCapsulePath.toUri().toURL() } );
 				InputStream input = null;
 				String resName = null;
 				try {
-					resName = inCapsule.getAttribute(Attribute.<String>named(ATTR_ICON));
+					resName = inCapsule.getAttribute(Attribute.<String>named(ATTR_ICON)) + ".icns";
 					log.debug("Windows: attempting to use icon {}", resName);
 					input = urlClassLoader.getResourceAsStream(resName);
 				} catch (Throwable ignored) {
 					log.info("Windows: icon resource {} can't be opened, omitting", resName);
 				}
 				if (input != null) {
+					boolean success = false;
+					long copied = 0;
 					try {
 						icon = Files.createTempFile("", ".ico");
 						log.debug("Windows: copying icon resource to {} and setting launch4j icon", icon.toString());
-						Files.copy(input, icon);
-						c.setIcon(icon.toFile());
+						copied = Files.copy(input, icon, StandardCopyOption.REPLACE_EXISTING);
+						// copied = Files.copy(input, Files.createFile(Paths.get("/Users/fabio/quickcast.ico")), StandardCopyOption.REPLACE_EXISTING);
+						if (copied > 0) {
+							log.debug("Windows: icon copied successfully to resource to {}, bytes {}", icon.toString(), copied);
+							success = true;
+						}
+					} catch (IOException ioe) {
+						log.info("Windows: icon resource can't be copied successfully to {}, error: {}", resName, ioe.getMessage());
 					} finally {
 						input.close();
+						if (success)
+							c.setIcon(icon.toFile());
+						else
+							log.info("Windows: icon resource {} can't be read, omitting", resName);
 					}
+				} else {
+					log.info("Windows: icon resource {} can't be found, omitting", resName);
 				}
 			}
 
@@ -412,7 +435,7 @@ public class NativeCapsule {
 		final Path outJarPath = macos.resolve(getSimpleCapsuleName());
 		final Jar jar = createJar(outJarPath);
 		if (inCapsule.hasAttribute(Attribute.named(ATTR_ICON))) {
-			final URLClassLoader urlClassLoader = new URLClassLoader( new URL[] { outJarPath.toUri().toURL() } );
+			final URLClassLoader urlClassLoader = new URLClassLoader( new URL[] { inCapsulePath.toUri().toURL() } );
 			InputStream input = null;
 			String resName = null;
 			try {
@@ -430,6 +453,8 @@ public class NativeCapsule {
 				} finally {
 					input.close();
 				}
+			} else {
+				log.info("Mac OS X: icon resource {} can't be found, omitting", resName);
 			}
 		}
 		makeUnixExecutable(jar);
