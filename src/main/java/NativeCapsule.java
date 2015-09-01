@@ -295,7 +295,7 @@ public class NativeCapsule {
 	private static void setLaunch4JBinDir() {
 		if (Platform.myPlatform().isMac())
 			copyBin("mac", new String[]{"ld", "windres"});
-		else if (Platform.myPlatform().toString().contains("linux")) // TODO Expand Platform a bit
+		else if (Platform.myPlatform().isLinux())
 			copyBin("linux", new String[]{"ld", "windres"});
 		else if (Platform.myPlatform().isWindows())
 			copyBin("windows", new String[]{"ld.exe", "windres.exe"});
