@@ -7,6 +7,8 @@ plugins {
 sourceCompatibility = '1.7'
 targetCompatibility = '1.7'
 
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
 group                   = "co.paralleluniverse"
 version                 = "0.1.0-SNAPSHOT"
 status                  = "integration"
@@ -20,6 +22,11 @@ ext.scmConnection       = "https://github.com/puniverse/capsule-desktop.git"
 ext.distDir             = "$buildDir/dist"
 ext.isReleaseVersion    = !version.endsWith("SNAPSHOT")
 
+ext.capsuleVer          = '1.0-rc2-SNAPSHOT'
+ext.joptVer             = '4.9'
+ext.launch4jVer         = '3.5.0'
+ext.slf4jVer            = '1.7.12'
+
 // User and Password are taken from ~/.gradle/gradle.properties
 if (!project.hasProperty("sonatypeUsername") || !project.hasProperty("sonatypePassword")) {
 	println "sonatype username or password not set"
@@ -31,7 +38,7 @@ repositories {
 	mavenLocal()
 	mavenCentral()
 //    maven { url 'https://repository.apache.org/content/groups/snapshots/' } // required for commons imaging
-//    maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+    maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
 }
 
 configurations {
@@ -46,10 +53,10 @@ sourceSets {
 }
 
 dependencies {
-	compile 'co.paralleluniverse:capsule-util:1.0-rc2-SNAPSHOT'
-	compile 'net.sf.jopt-simple:jopt-simple:4.9'
+	compile "co.paralleluniverse:capsule-util:$capsuleVer"
+	compile "net.sf.jopt-simple:jopt-simple:$joptVer"
 	// compile 'commons-io:commons-io:2.4'
-	compile('net.sf.launch4j:launch4j:3.5.0') {
+	compile("net.sf.launch4j:launch4j:$launch4jVer") {
 		exclude group: 'com.ibm.icu', module: 'icu4j'
 		exclude group: 'net.java.abeille', module: '*'
 		exclude group: 'org.apache.ant', module: '*'
@@ -59,12 +66,12 @@ dependencies {
 	// compile 'com.badlogicgames.packr:packr:1.2'
 	// compile 'org.apache.commons:commons-imaging:1.0-SNAPSHOT'
 
-	provided 'co.paralleluniverse:capsule-maven:1.0-rc2-SNAPSHOT'
+	provided "co.paralleluniverse:capsule-maven:$capsuleVer"
 
-	capsule 'co.paralleluniverse:capsule:1.0-rc2-SNAPSHOT'
-	capsule 'co.paralleluniverse:capsule-maven:1.0-rc2-SNAPSHOT'
+	testCompile "junit:junit:$junitVer"
 
-	testCompile 'junit:junit:4.12'
+	capsule "co.paralleluniverse:capsule:$capsuleVer"
+	capsule "co.paralleluniverse:capsule-maven:$capsuleVer"
 }
 
 def getDependencies(config) {
@@ -81,7 +88,6 @@ task capsule(type: Jar, dependsOn: classes) {
 	archiveName = "capsule-desktop.jar"
 
 	from sourceSets.main.output // this way we don't need to extract
-
 	from { configurations.capsule.collect { zipTree(it) } } // we need all of Capsule's classes
 
 	manifest {
