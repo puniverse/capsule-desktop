@@ -536,8 +536,8 @@ public class NativeCapsule {
 				// | in the chain.
 
 				log.debug("GUI: removing non-GUI Maven caplet {}", c.getName());
-				//noinspection SuspiciousMethodCalls
-				caplets.remove(c);
+				if (caplets.remove(c.getName()))
+					log.debug("GUI: successfully removed non-GUI Maven caplet {}", c.getName());
 				usesMaven = true;
 			}
 		}
