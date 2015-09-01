@@ -25,24 +25,23 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static java.util.Arrays.*;
 
 /**
- * Wrapping capsule that will build and launch a native desktop GUI or non-GUI app
+ * Wrapping capsule that will build and launch a native desktop GUI or non-GUI app.
+ *
+ * @author pron
+ * @author circlespainter
  */
 public class NativeCapsule {
-	// TODO Logging
-
-	// private static final String PROP_VERSION = OPTION("capsule.build", "false", "build", true, "Builds the native application.");
 
 	protected static final String ATTR_GUI = "GUI";
 	protected static final String ATTR_ICON = "Icon";
@@ -57,6 +56,8 @@ public class NativeCapsule {
 	private static final String GUI_CAPSULE_NAME = "GUICapsule";
 	private static final String MAVEN_CAPSULE_NAME = "MavenCapsule";
 	private static final String GUI_MAVEN_CAPSULE_NAME = "GUIMavenCapsule";
+
+	private static Logger log = LoggerFactory.getLogger(NativeCapsule.class);
 
 	private static List<Path> tmpFiles = new ArrayList<>();
 	private static Path inCapsulePath;
@@ -75,18 +76,23 @@ public class NativeCapsule {
 		final OptionSet options = parser.parse(args);
 
 		if (!options.has(c) || options.valuesOf(c).size() != 1 || options.valuesOf(o).size() > 1) {
+			log.error("Command-line validation failed");
 			parser.printHelpOn(System.err);
 			System.exit(-1);
 		}
 
 		inCapsulePath = Paths.get(options.valuesOf(c).get(0));
+		log.debug("Input capsule: {}", inCapsulePath.toAbsolutePath().normalize().toString());
 		inCapsule = new CapsuleLauncher(inCapsulePath).newCapsule();
 		outBasePath = options.valuesOf(o).size() == 1 ? options.valuesOf(o).get(0) : getOutputBase();
+		log.debug("Output binary prefix: {}", outBasePath);
 		buildMac = options.has("m") || options.has("macosx");
 		buildUnix = options.has("u") || options.has("unix");
 		buildWindows = options.has("w") || options.has("windows");
 
 		buildNative();
+
+		log.debug("Removing temp files");
 		for (final Path p : tmpFiles)
 			Capsule.delete(p);
 	}
@@ -110,13 +116,15 @@ public class NativeCapsule {
 			final List<String> platforms = new ArrayList<>();
 			if (buildMac)
 				platforms.add(Platform.OS_MACOS);
-			if (buildLinux)
-				platforms.add(Platform.OS_LINUX);
+			if (buildUnix)
+				platforms.add(Platform.OS_UNIX);
 			if (buildWindows)
 				platforms.add(Platform.OS_WINDOWS);
 
 			if (platforms.isEmpty())
 				platforms.add("CURRENT"); // Default
+
+			log.debug("Building native binaries for the following platforms: {}", platforms.toString());
 
 			for (final String p : platforms)
 				buildApp(p, Paths.get(outBase));
@@ -145,8 +153,10 @@ public class NativeCapsule {
 
 	private static Jar createJar(Path out) throws IOException {
 		final Jar jar = new Jar(inCapsulePath);
-		if (out != null)
+		if (out != null) {
+			log.debug("Creating JAR for native app: {}", out.toAbsolutePath().normalize().toString());
 			jar.setOutput(out);
+		}
 		return jar;
 	}
 
@@ -157,6 +167,8 @@ public class NativeCapsule {
 	}
 
 	private static Path buildWindowsApp(Path out) throws IOException {
+		log.debug("Building native Windows app: {}", out.toAbsolutePath().normalize().toString());
+
 		setLaunch4JBinDir();
 		setLaunch4JLibDir();
 		setLaunch4JHeadDir();
@@ -167,6 +179,7 @@ public class NativeCapsule {
 		try {
 			if (isGUIApp()) {
 				tmpJar = Files.createTempFile("native-capsule-", ".jar");
+				log.debug("Creating Windows temp jar {}", tmpJar.toFile().toString());
 				Jar j = createJar(tmpJar);
 				makeGUICapsule(j);
 				j.close();
@@ -175,18 +188,33 @@ public class NativeCapsule {
 
 			ConfigPersister.getInstance().createBlank();
 			final Config c = ConfigPersister.getInstance().getConfig();
-			c.setHeaderType(isGUIApp() ? Config.GUI_HEADER : Config.CONSOLE_HEADER);
+			final String head = isGUIApp() ? Config.GUI_HEADER : Config.CONSOLE_HEADER;
+			log.debug("Windows: using head type {}", head);
+			c.setHeaderType(head);
 			c.setOutfile(withSuffix(out, ".exe").toFile());
+			log.debug("Windows: using jar {}", jar.toAbsolutePath().normalize().toString());
+			log.debug("Windows: writing to {}", c.getOutfile().toString());
 			c.setJar(jar.toFile());
 
-			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_MIN_JAVA_VERSION.getKey())))
-				c.getJre().setMinVersion(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_MIN_JAVA_VERSION.getKey())));
-			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_JAVA_VERSION.getKey())))
-				c.getJre().setMaxVersion(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_JAVA_VERSION.getKey())));
-			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_JDK_REQUIRED.getKey())))
-				c.getJre().setJdkPreference(inCapsule.<Boolean>getAttribute(Attribute.<Boolean>named(Capsule.ATTR_JDK_REQUIRED.getKey())) ? Jre.JDK_PREFERENCE_JDK_ONLY : null);
+			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_MIN_JAVA_VERSION.getKey()))) {
+				final String minJavaVersion = inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_MIN_JAVA_VERSION.getKey()));
+				log.debug("Windows: requiring minumum Java version {}", minJavaVersion);
+				c.getJre().setMinVersion(minJavaVersion);
+			}
+			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_JAVA_VERSION.getKey()))) {
+				final String maxJavaVersion = inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_JAVA_VERSION.getKey()));
+				log.debug("Windows: requiring maximum Java version {}", maxJavaVersion);
+				c.getJre().setMaxVersion(maxJavaVersion);
+			}
+			if (inCapsule.hasAttribute(Attribute.named(Capsule.ATTR_JDK_REQUIRED.getKey()))) {
+				final String jdkPreference = inCapsule.<Boolean>getAttribute(Attribute.<Boolean>named(Capsule.ATTR_JDK_REQUIRED.getKey())) ?
+					Jre.JDK_PREFERENCE_JDK_ONLY : null;
+				log.debug("Windows: JDK preferred? {}", Jre.JDK_PREFERENCE_JDK_ONLY.equals(jdkPreference) ? "true" : "false");
+				c.getJre().setJdkPreference(jdkPreference);
+			}
 
 			if (inCapsule.hasAttribute(Attribute.<Boolean>named(ATTR_SINGLE_INSTANCE)) && inCapsule.getAttribute(Attribute.<Boolean>named(ATTR_SINGLE_INSTANCE))) {
+				log.debug("Windows: restricting to single instance as requested");
 				final SingleInstance si = new SingleInstance();
 				si.setWindowTitle(inCapsule.getAttribute(Attribute.<String>named(Capsule.ATTR_APP_NAME.getKey())));
 				si.setMutexName(inCapsule.getAppId());
@@ -197,6 +225,7 @@ public class NativeCapsule {
 				|| inCapsule.getAttribute(Attribute.<String>named(ATTR_NATIVE_DESCRIPTION)) != null
 				|| inCapsule.getAttribute(Attribute.<String>named(ATTR_COPYRIGHT)) != null
 				|| inCapsule.getAttribute(Attribute.<String>named(ATTR_INTERNAL_NAME)) != null) {
+				log.debug("Windows: detected metadata attributes, setting them");
 
 				final VersionInfo versionInfo = new VersionInfo();
 				versionInfo.setCompanyName(inCapsule.getAttribute(Attribute.<String>named(ATTR_IMPLEMENTATION_VENDOR)));
@@ -215,12 +244,18 @@ public class NativeCapsule {
 			if (inCapsule.hasAttribute(Attribute.<String>named(ATTR_ICON))) {
 				final URLClassLoader urlClassLoader = new URLClassLoader( new URL[] { jar.toUri().toURL() } );
 				InputStream input = null;
+				String resName = null;
 				try {
-					input = urlClassLoader.getResourceAsStream(inCapsule.getAttribute(Attribute.<String>named(ATTR_ICON)));
-				} catch (Throwable ignored) {}
+					resName = inCapsule.getAttribute(Attribute.<String>named(ATTR_ICON));
+					log.debug("Windows: attempting to use icon {}", resName);
+					input = urlClassLoader.getResourceAsStream(resName);
+				} catch (Throwable ignored) {
+					log.info("Windows: icon resource {} can't be opened, omitting", resName);
+				}
 				if (input != null) {
 					try {
 						icon = Files.createTempFile("", ".ico");
+						log.debug("Windows: copying icon resource to {} and setting launch4j icon", icon.toString());
 						Files.copy(input, icon);
 						c.setIcon(icon.toFile());
 					} finally {
@@ -231,6 +266,9 @@ public class NativeCapsule {
 
 			final Builder builder = new Builder(Log.getConsoleLog(), findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().toFile());
 			builder.build();
+
+			log.debug("Windows native app build complete");
+
 			return out;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
@@ -250,9 +288,10 @@ public class NativeCapsule {
 
 	private static Path setLaunch4JTmpDir() {
 		try {
-			final Path tmpdir = addTempFile(Files.createTempDirectory("capsule-launch4j-tmp-"));
-			System.setProperty("launch4j.tmpdir", tmpdir.toString());
-			return tmpdir;
+			final Path tmpDir = addTempFile(Files.createTempDirectory("capsule-launch4j-tmp-"));
+			log.debug("Creating and setting launch4j temp dir {}", tmpDir.toAbsolutePath().normalize().toString());
+			System.setProperty("launch4j.tmpdir", tmpDir.toString());
+			return tmpDir;
 		} catch (IOException e) {
 			throw new RuntimeException("Could not create temporary directory necessary for building a Windows executable", e);
 		}
@@ -260,17 +299,21 @@ public class NativeCapsule {
 
 	private static Path setLaunch4JLibDir() {
 		try {
-			final Path libdir = findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().resolve("w32api");
-			if (Files.exists(libdir))
-				Capsule.delete(libdir);
-			addTempFile(Files.createDirectory(libdir));
-
-			for (String filename : new String[]{
+			final Path libDir = findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().resolve("w32api");
+			final String[] linkFiles = new String[] {
 				"crt2.o", "libadvapi32.a", "libgcc.a", "libkernel32.a", "libmingw32.a",
-				"libmsvcrt.a", "libshell32.a", "libuser32.a"})
-				copy(filename, "w32api", libdir);
+				"libmsvcrt.a", "libshell32.a", "libuser32.a"
+			};
+			log.debug("Copying launch4j w32api linkfiles {} to {}", Arrays.toString(linkFiles), libDir.toAbsolutePath().normalize().toString());
 
-			return libdir;
+			if (Files.exists(libDir))
+				Capsule.delete(libDir);
+			addTempFile(Files.createDirectory(libDir));
+
+			for (final String f : linkFiles)
+				copy(f, "w32api", libDir);
+
+			return libDir;
 		} catch (IOException e) {
 			throw new RuntimeException("Could not extract libraries necessary for building a Windows executable", e);
 		}
@@ -278,15 +321,18 @@ public class NativeCapsule {
 
 	private static Path setLaunch4JHeadDir() {
 		try {
-			final Path libdir = findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().resolve("head");
-			if (Files.exists(libdir))
-				Capsule.delete(libdir);
-			addTempFile(Files.createDirectory(libdir));
+			final Path libDir = findOwnJarFile(NativeCapsule.class).toAbsolutePath().getParent().resolve("head");
+			final String[] headFiles = new String[] { "consolehead.o", "guihead.o", "head.o" };
+			log.debug("Copying launch4j headers {} to {}", Arrays.toString(headFiles), libDir.toAbsolutePath().normalize().toString());
 
-			for (final String filename : new String[]{"consolehead.o", "guihead.o", "head.o"})
-				copy(filename, "head", libdir);
+			if (Files.exists(libDir))
+				Capsule.delete(libDir);
+			addTempFile(Files.createDirectory(libDir));
 
-			return libdir;
+			for (final String f : headFiles)
+				copy(f, "head", libDir);
+
+			return libDir;
 		} catch (IOException e) {
 			throw new RuntimeException("Could not extract libraries necessary for building a Windows executable", e);
 		}
@@ -307,36 +353,46 @@ public class NativeCapsule {
 
 	private static Path copyLaunch4JBins(String os, String[] bins) {
 		try {
-			final Path bindir = addTempFile(Files.createTempDirectory("capsule-launch4j-bin-"));
+			final Path binDir = addTempFile(Files.createTempDirectory("capsule-launch4j-bin-"));
+			log.debug("Copying launch4j binaries {} for platform {} to {} and setting 'launch4j.bindir' system property", Arrays.toString(bins), os, binDir.toAbsolutePath().normalize().toString());
 			for (String filename : bins)
-				ensureExecutable(copy(filename, "bin/" + os, bindir));
-			System.setProperty("launch4j.bindir", bindir.toString());
-			return bindir;
+				ensureExecutable(copy(filename, "bin/" + os, binDir));
+			System.setProperty("launch4j.bindir", binDir.toString());
+			return binDir;
 		} catch (IOException e) {
 			throw new RuntimeException("Could not extract binaries necessary for building a Windows executable", e);
 		}
 	}
 
-	private static Path copy(String filename, String resourceDir, Path targetDir) throws IOException {
-		try (InputStream in = NativeCapsule.class.getClassLoader().getResourceAsStream(resourceDir + '/' + filename);
-		     OutputStream out = Files.newOutputStream(targetDir.resolve(filename))) {
+	private static Path copy(String fileName, String resourceDir, Path targetDir) throws IOException {
+		log.debug("Copying resource {} to {}", resourceDir + '/' + fileName, targetDir);
+		try (InputStream in = NativeCapsule.class.getClassLoader().getResourceAsStream(resourceDir + '/' + fileName);
+		     OutputStream out = Files.newOutputStream(targetDir.resolve(fileName))) {
 			copy(in, out);
-			return targetDir.resolve(filename);
+			return targetDir.resolve(fileName);
 		}
 	}
 
 	private static Path buildUnixApp(Path out) throws IOException {
+		log.debug("Building native Unix app: {}", out);
+
 		final Jar jar = createJar(out);
 		makeUnixExecutable(jar);
 		if (isGUIApp())
 			makeGUICapsule(jar);
 		jar.close();
 		ensureExecutable(out);
+
+		log.debug("Unix native app build complete");
+
 		return out;
 	}
 
 	private static Path buildMacApp(Path out) throws IOException {
 		out = withSuffix(out, ".app");
+
+		log.debug("Building native Mac OS X app: {}", out);
+
 		Capsule.delete(out);
 		Files.createDirectory(out);
 
@@ -358,11 +414,16 @@ public class NativeCapsule {
 			String resName = null;
 			try {
 				resName = inCapsule.getAttribute(Attribute.<String>named(ATTR_ICON)) + ".icns";
+				log.debug("Mac OS X: attempting to use icon {}", resName);
 				input = urlClassLoader.getResourceAsStream(resName);
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+				log.info("Mac OS X: icon resource {} can't be opened, omitting", resName);
+			}
 			if (resName != null && input != null) {
 				try {
-					Files.copy(input, resources.resolve(resName));
+					final Path iconOut = resources.resolve(resName);
+					log.debug("Mac OS X: copying icon resource to {}", iconOut);
+					Files.copy(input, iconOut);
 				} finally {
 					input.close();
 				}
@@ -373,6 +434,9 @@ public class NativeCapsule {
 			makeGUICapsule(jar);
 		jar.close();
 		ensureExecutable(outJarPath);
+
+		log.debug("Mac OS X native app build complete");
+
 		return out;
 	}
 
@@ -410,14 +474,18 @@ public class NativeCapsule {
 	}
 
 	private static Jar makeUnixExecutable(Jar jar) {
+		log.debug("Setting JAR prefix as native Unix executable");
 		return jar.setJarPrefix("#!/bin/sh\n\nexec java -jar $0 \"$@\"\n");
 	}
 
 	private static Jar makeGUICapsule(Jar jar) throws IOException {
+		log.debug("Making a GUI capsule");
+
 		List<String> caplets = inCapsule.getAttribute(Attribute.<List<String>>named(Capsule.ATTR_CAPLETS.getKey()));
 		//noinspection Convert2Diamond
 		caplets = caplets == null ? new ArrayList<String>() : new ArrayList<String>(caplets);
 
+		log.debug("GUI: adding {}", GUI_CAPSULE_NAME);
 		caplets.add(GUI_CAPSULE_NAME);
 
 		boolean usesMaven = false;
@@ -429,12 +497,17 @@ public class NativeCapsule {
 				// | `resolve` can handle. Else (f.e. when extending `MavenCapsule`) the capsule-building process must
 				// | make sure that only one of the capsules that can `resolve` the same `lookup` values is present
 				// | in the chain.
+
+				log.debug("GUI: removing non-GUI Maven caplet {}", c.getName());
+				//noinspection SuspiciousMethodCalls
 				caplets.remove(c);
 				usesMaven = true;
 			}
 		}
-		if (usesMaven)
+		if (usesMaven) {
+			log.debug("GUI: adding GUI Maven caplet {}", GUI_MAVEN_CAPSULE_NAME);
 			caplets.add(GUI_MAVEN_CAPSULE_NAME);
+		}
 
 		jar.setListAttribute("Caplets", caplets);
 
@@ -477,6 +550,7 @@ public class NativeCapsule {
 	}
 
 	private static Path ensureExecutable(Path file) {
+		log.debug("Ensuring executable: {}", file.toAbsolutePath().normalize().toString());
 		if (!Files.isExecutable(file)) {
 			try {
 				Set<PosixFilePermission> perms = Files.getPosixFilePermissions(file);
