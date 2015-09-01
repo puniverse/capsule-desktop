@@ -63,13 +63,14 @@ public class NativeCapsule {
 	private static String outCapsuleBasePath;
 	private static co.paralleluniverse.capsule.Capsule inCapsule;
 	private static boolean buildMac, buildLinux, buildWindows;
+	private static boolean buildMac, buildUnix, buildWindows;
 
 	public static void main(String[] args) throws IOException {
 		final OptionParser parser = new OptionParser();
 		final OptionSpec<String> c = parser.acceptsAll(asList("c", "capsule")).withRequiredArg().ofType(String.class).describedAs("A single capsule pathname to build native binaries for");
 		final OptionSpec<String> o = parser.acceptsAll(asList("o", "output")).withRequiredArg().ofType(String.class).describedAs("The base output pathname of built binaries");
 		parser.acceptsAll(asList("m", "macosx"), "Build Mac OS X binary");
-		parser.acceptsAll(asList("l", "linux"), "Build Linux binary");
+		parser.acceptsAll(asList("u", "unix"), "Build Unix binary");
 		parser.acceptsAll(asList("w", "windows"), "Build Windows binary");
 		parser.acceptsAll(asList("h", "?", "help"), "Show help").forHelp();
 		final OptionSet options = parser.parse(args);
@@ -83,7 +84,7 @@ public class NativeCapsule {
 		inCapsule = new CapsuleLauncher(inCapsulePath).newCapsule();
 		outCapsuleBasePath = options.valuesOf(o).size() == 1 ? options.valuesOf(o).get(0) : getOutputBase();
 		buildMac = options.has("m") || options.has("macosx");
-		buildLinux = options.has("l") || options.has("linux");
+		buildUnix = options.has("u") || options.has("unix");
 		buildWindows = options.has("w") || options.has("windows");
 
 		buildNative();
@@ -128,8 +129,8 @@ public class NativeCapsule {
 	private static void buildApp(String platform, Path out) throws IOException {
 		if (Platform.OS_MACOS.equals(platform))
 			buildMacApp(out);
-		else if (Platform.OS_LINUX.equals(platform))
-			buildLinuxApp(out);
+		else if (Platform.OS_UNIX.equals(platform))
+			buildUnixApp(out);
 		else if (Platform.OS_WINDOWS.equals(platform))
 			buildWindowsApp(out);
 		else if ("CURRENT".equals(platform))
@@ -299,6 +300,8 @@ public class NativeCapsule {
 			copyBin("linux", new String[]{"ld", "windres"});
 		else if (Platform.myPlatform().isWindows())
 			copyBin("windows", new String[]{"ld.exe", "windres.exe"});
+		else if (Platform.myPlatform().isUnix())
+			log.warn("Detected non-Linux Unix platform, assuming launch4j's 'ld' and 'windres' can be found on the path");
 		else
 			throw new RuntimeException(Platform.myPlatform() + " is not supported");
 	}
@@ -323,7 +326,7 @@ public class NativeCapsule {
 		}
 	}
 
-	private static Path buildLinuxApp(Path out) throws IOException {
+	private static Path buildUnixApp(Path out) throws IOException {
 		final Jar jar = createJar(out);
 		makeUnixExecutable(jar);
 		if (isGUIApp())
