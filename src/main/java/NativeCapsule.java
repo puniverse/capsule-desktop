@@ -416,12 +416,23 @@ public class NativeCapsule {
 		//noinspection Convert2Diamond
 		caplets = caplets == null ? new ArrayList<String>() : new ArrayList<String>(caplets);
 
-		// caplets.add(NativeCapsule.class.getName());
 		caplets.add(GUI_CAPSULE_NAME);
-		if (inCapsule.hasCaplet(MAVEN_CAPSULE_NAME)) {
-			caplets.remove(MAVEN_CAPSULE_NAME); // Dependency resolution conflicts between them
-			caplets.add(GUI_MAVEN_CAPSULE_NAME);
+
+		boolean usesMaven = false;
+		for (Class<?> c : inCapsule.getCaplets()) {
+			if (CapletUtil.isSubclass(c, MAVEN_CAPSULE_NAME)) {
+				// The 2-stage Capsule lookup/resolve rule is:
+				//
+				// | Each `lookup` / `resolve`-customizing capsule must return from `lookup` values that only its own
+				// | `resolve` can handle. Else (f.e. when extending `MavenCapsule`) the capsule-building process must
+				// | make sure that only one of the capsules that can `resolve` the same `lookup` values is present
+				// | in the chain.
+				caplets.remove(c);
+				usesMaven = true;
+			}
 		}
+		if (usesMaven)
+			caplets.add(GUI_MAVEN_CAPSULE_NAME);
 
 		jar.setListAttribute("Caplets", caplets);
 
