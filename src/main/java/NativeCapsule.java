@@ -258,7 +258,7 @@ public class NativeCapsule {
 				InputStream input = null;
 				String resName = null;
 				try {
-					resName = inCapsule.getAttribute(Attribute.<String>named(ATTR_ICON)) + ".icns";
+					resName = inCapsule.getAttribute(Attribute.<String>named(ATTR_ICON)) + ".ico";
 					log.debug("Windows: attempting to use icon {}", resName);
 					input = urlClassLoader.getResourceAsStream(resName);
 				} catch (Throwable ignored) {
@@ -266,12 +266,11 @@ public class NativeCapsule {
 				}
 				if (input != null) {
 					boolean success = false;
-					long copied = 0;
+					long copied;
 					try {
 						icon = Files.createTempFile("", ".ico");
 						log.debug("Windows: copying icon resource to {} and setting launch4j icon", icon.toString());
 						copied = Files.copy(input, icon, StandardCopyOption.REPLACE_EXISTING);
-						// copied = Files.copy(input, Files.createFile(Paths.get("/Users/fabio/quickcast.ico")), StandardCopyOption.REPLACE_EXISTING);
 						if (copied > 0) {
 							log.debug("Windows: icon copied successfully to resource to {}, bytes {}", icon.toString(), copied);
 							success = true;
@@ -446,12 +445,22 @@ public class NativeCapsule {
 				log.info("Mac OS X: icon resource {} can't be opened, omitting", resName);
 			}
 			if (resName != null && input != null) {
+				boolean success = false;
+				long copied;
 				try {
 					final Path iconOut = resources.resolve(resName);
 					log.debug("Mac OS X: copying icon resource to {}", iconOut);
-					Files.copy(input, iconOut);
+					copied = Files.copy(input, iconOut);
+					if (copied > 0) {
+						log.debug("Mac OS X: icon copied successfully to resource to {}, bytes {}", iconOut.toString(), copied);
+						success = true;
+					}
+				} catch (IOException ioe) {
+					log.info("Mac OS X: icon resource can't be copied successfully to {}, error: {}", resName, ioe.getMessage());
 				} finally {
 					input.close();
+					if (!success)
+						log.info("Windows: icon resource {} can't be read, omitting", resName);
 				}
 			} else {
 				log.info("Mac OS X: icon resource {} can't be found, omitting", resName);
