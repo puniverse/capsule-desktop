@@ -1,65 +1,65 @@
 plugins {
-    id 'java'
-    id 'maven'
-    id 'signing'
+	id 'java'
+	id 'maven'
+	id 'signing'
 }
 
 sourceCompatibility = '1.7'
 targetCompatibility = '1.7'
 
-group               = "co.paralleluniverse"
-version             = "0.1.0-SNAPSHOT"
-status              = "integration"
-description         = "Turns capsules into native applications"
-ext.url             = "http://puniverse.github.com/capsule-desktop"
-ext.vendor          = "Parallel Universe Software Co."
-ext.licenseName     = "Eclipse Public License - v 1.0"
-ext.licenseUrl      = "http://www.eclipse.org/legal/epl-v10.html"
-ext.scmUrl          = "https://github.com/puniverse/capsule-desktop"
-ext.scmConnection   = "https://github.com/puniverse/capsule-desktop.git"
-ext.distDir         = "$buildDir/dist"
-ext.isReleaseVersion = !version.endsWith("SNAPSHOT")
+group                   = "co.paralleluniverse"
+version                 = "0.1.0-SNAPSHOT"
+status                  = "integration"
+description             = "Turns capsules into native applications"
+ext.url                 = "http://puniverse.github.com/capsule-desktop"
+ext.vendor              = "Parallel Universe Software Co."
+ext.licenseName         = "Eclipse Public License - v 1.0"
+ext.licenseUrl          = "http://www.eclipse.org/legal/epl-v10.html"
+ext.scmUrl              = "https://github.com/puniverse/capsule-desktop"
+ext.scmConnection       = "https://github.com/puniverse/capsule-desktop.git"
+ext.distDir             = "$buildDir/dist"
+ext.isReleaseVersion    = !version.endsWith("SNAPSHOT")
 
 // User and Password are taken from ~/.gradle/gradle.properties
 if (!project.hasProperty("sonatypeUsername") || !project.hasProperty("sonatypePassword")) {
-    println "sonatype username or password not set"
-    ext.sonatypeUsername = ""
-    ext.sonatypePassword = ""
+	println "sonatype username or password not set"
+	ext.sonatypeUsername = ""
+	ext.sonatypePassword = ""
 }
 
 repositories {
 	mavenLocal()
-    mavenCentral()
-    maven { url 'https://repository.apache.org/content/groups/snapshots/' } // required for commons imaging
-    maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+	mavenCentral()
+//    maven { url 'https://repository.apache.org/content/groups/snapshots/' } // required for commons imaging
+//    maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
 }
 
 configurations {
-    capsule
-    provided
+	capsule
+	provided
 }
 
 sourceSets {
-    main.compileClasspath += configurations.provided
-    test.compileClasspath += configurations.provided
-    test.runtimeClasspath += configurations.provided
+	main.compileClasspath += configurations.provided
+	test.compileClasspath += configurations.provided
+	test.runtimeClasspath += configurations.provided
 }
 
 dependencies {
-    compile 'co.paralleluniverse:capsule-util:1.0-rc2-SNAPSHOT'
-    compile 'net.sf.jopt-simple:jopt-simple:4.9'
-    // compile 'commons-io:commons-io:2.4'
-    compile('net.sf.launch4j:launch4j:3.5.0') {
-        exclude group: 'com.ibm.icu', module: 'icu4j'
-        exclude group: 'net.java.abeille', module: '*'
-        exclude group: 'org.apache.ant', module: '*'
-        exclude group: 'com.jgoodies', module: '*'
-        exclude group: 'foxtrot', module: '*'
-    }
-    // compile 'com.badlogicgames.packr:packr:1.2'
-    // compile 'org.apache.commons:commons-imaging:1.0-SNAPSHOT'
+	compile 'co.paralleluniverse:capsule-util:1.0-rc2-SNAPSHOT'
+	compile 'net.sf.jopt-simple:jopt-simple:4.9'
+	// compile 'commons-io:commons-io:2.4'
+	compile('net.sf.launch4j:launch4j:3.5.0') {
+		exclude group: 'com.ibm.icu', module: 'icu4j'
+		exclude group: 'net.java.abeille', module: '*'
+		exclude group: 'org.apache.ant', module: '*'
+		exclude group: 'com.jgoodies', module: '*'
+		exclude group: 'foxtrot', module: '*'
+	}
+	// compile 'com.badlogicgames.packr:packr:1.2'
+	// compile 'org.apache.commons:commons-imaging:1.0-SNAPSHOT'
 
-    provided 'co.paralleluniverse:capsule-maven:1.0-rc2-SNAPSHOT'
+	provided 'co.paralleluniverse:capsule-maven:1.0-rc2-SNAPSHOT'
 
 	capsule 'co.paralleluniverse:capsule:1.0-rc2-SNAPSHOT'
 	capsule 'co.paralleluniverse:capsule-maven:1.0-rc2-SNAPSHOT'
@@ -68,114 +68,121 @@ dependencies {
 }
 
 def getDependencies(config) {
-    return config.getAllDependencies().collect {
-        def res = it.group + ':' + it.name + ':' + it.version + (!it.artifacts.isEmpty() ? ':' + it.artifacts.iterator().next().classifier : '')
-        if(!it.excludeRules.isEmpty()) {
-            res += "(" + it.excludeRules.collect { it.group + ':' + it.module }.join(',') + ")"
-        }
-        return res
-    }
+	return config.getAllDependencies().collect {
+		def res = it.group + ':' + it.name + ':' + it.version + (!it.artifacts.isEmpty() ? ':' + it.artifacts.iterator().next().classifier : '')
+		if (!it.excludeRules.isEmpty()) {
+			res += "(" + it.excludeRules.collect { it.group + ':' + it.module }.join(',') + ")"
+		}
+		return res
+	}
 }
 
 task capsule(type: Jar, dependsOn: classes) {
-    archiveName = "capsule-desktop.jar"
+	archiveName = "capsule-desktop.jar"
 
-    from sourceSets.main.output // this way we don't need to extract
+	from sourceSets.main.output // this way we don't need to extract
 
-    from { configurations.capsule.collect { zipTree(it) } } // we need all of Capsule's classes
+	from { configurations.capsule.collect { zipTree(it) } } // we need all of Capsule's classes
 
-    manifest {
-        attributes(
-            'Premain-Class'     : 'Capsule',
-            'Main-Class'        : 'Capsule',
-            'Application-Class' : 'NativeCapsule',
-            'Application-Version' : version,
-            'Extract-Capsule'   : 'false', // don't extract capsule to the filesystem
-            'Min-Java-Version'  : '1.7.0',
-            'Dependencies'      : getDependencies(configurations.runtime).join(' '),
-            'Repositories'      : 'central local https://oss.sonatype.org/content/repositories/snapshots',
-            'Caplets'           : 'MavenCapsule'
-        )
-    }
+	manifest {
+		attributes(
+			'Premain-Class': 'Capsule',
+			'Main-Class': 'Capsule',
+			'Application-Class': 'NativeCapsule',
+			'Application-Version': version,
+			'Extract-Capsule': 'false', // don't extract capsule to the filesystem
+			'Min-Java-Version': '1.7.0',
+			'Dependencies': getDependencies(configurations.runtime).join(' '),
+			'Repositories': 'central local https://oss.sonatype.org/content/repositories/snapshots',
+			'Caplets': 'MavenCapsule'
+		)
+	}
+
+	doLast {
+		logger.info("$buildDir/libs/capsule-desktop.jar -> $buildDir/libs/${project.name}-${project.version}.jar")
+		if (file("$buildDir/libs/${project.name}-${project.version}.jar").exists())
+			file("$buildDir/libs/${project.name}-${project.version}.jar").delete()
+		file("$buildDir/libs/capsule-desktop.jar").renameTo(file("$buildDir/libs/${project.name}-${project.version}.jar"))
+	}
 }
 
 task sourcesJar(type: Jar, dependsOn: classes) {
-    classifier = 'sources'
-    from sourceSets.main.allSource
+	classifier = 'sources'
+	from sourceSets.main.allSource
 }
 
 task javadocJar(type: Jar, dependsOn: javadoc) {
-    classifier = 'javadoc'
-    from javadoc.destinationDir
+	classifier = 'javadoc'
+	from javadoc.destinationDir
 }
 
 artifacts {
-    archives jar
-    archives sourcesJar
-    archives javadocJar
+	archives jar
+	archives sourcesJar
+	archives javadocJar
 }
 
 signing {
-    required { isReleaseVersion && gradle.taskGraph.hasTask("uploadArchives") }
-    sign configurations.archives
+	required { isReleaseVersion && gradle.taskGraph.hasTask("uploadArchives") }
+	sign configurations.archives
 }
 
 uploadArchives {
-    repositories {
-        mavenDeployer {
-            beforeDeployment { deployment -> signing.signPom(deployment) }
+	repositories {
+		mavenDeployer {
+			beforeDeployment { deployment -> signing.signPom(deployment) }
 
-            repository(
-                url: (isReleaseVersion ?
-                        "https://oss.sonatype.org/service/local/staging/deploy/maven2" :
-                        "https://oss.sonatype.org/content/repositories/snapshots")) {
-                // User and Password are taken from ~/.gradle/gradle.properties
-                authentication(userName: project.sonatypeUsername, password: project.sonatypePassword)
-            }
-            pom.project {
-                name project.name
-                packaging 'jar'
-                description project.description
-                url project.url
-                scm {
-                    url project.scmUrl
-                    connection project.scmConnection
-                    developerConnection project.scmConnection
-                }
-                licenses {
-                    license {
-                        name project.licenseName
-                        url project.licenseUrl
-                        distribution 'repo'
-                    }
-                }
-                developers {
-                    developer {
-                        id 'pron'
-                        name 'Ron Pressler'
-                    }
-                    developer {
-                        id 'circlespainter'
-                        name 'Fabio Tudone'
-                    }
-                }
-            }
-        }
-    }
+			repository(
+				url: (isReleaseVersion ?
+					"https://oss.sonatype.org/service/local/staging/deploy/maven2" :
+					"https://oss.sonatype.org/content/repositories/snapshots")) {
+				// User and Password are taken from ~/.gradle/gradle.properties
+				authentication(userName: project.sonatypeUsername, password: project.sonatypePassword)
+			}
+			pom.project {
+				name project.name
+				packaging 'jar'
+				description project.description
+				url project.url
+				scm {
+					url project.scmUrl
+					connection project.scmConnection
+					developerConnection project.scmConnection
+				}
+				licenses {
+					license {
+						name project.licenseName
+						url project.licenseUrl
+						distribution 'repo'
+					}
+				}
+				developers {
+					developer {
+						id 'pron'
+						name 'Ron Pressler'
+					}
+					developer {
+						id 'circlespainter'
+						name 'Fabio Tudone'
+					}
+				}
+			}
+		}
+	}
 }
 
-[build, install, signArchives, uploadArchives]*.dependsOn capsule
+[assemble, build, install, signArchives, uploadArchives]*.dependsOn capsule
 
 install.repositories.mavenInstaller {
-    pom.whenConfigured {
-        it.dependencies.clear()
-    }
+	pom.whenConfigured {
+		it.dependencies.clear()
+	}
 }
 
 uploadArchives.repositories.mavenDeployer {
-    pom.whenConfigured {
-        it.dependencies.clear()
-    }
+	pom.whenConfigured {
+		it.dependencies.clear()
+	}
 }
 
 defaultTasks 'build'
