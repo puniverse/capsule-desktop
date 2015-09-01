@@ -22,9 +22,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.*;
 
@@ -89,7 +87,6 @@ public class NativeCapsule {
 		inCapsulePath = Paths.get(options.valueOf(c));
 		log.debug("Input capsule: {}", inCapsulePath.toAbsolutePath().normalize().toString());
 		inCapsule = new CapsuleLauncher(inCapsulePath).newCapsule();
-		outBasePath = options.valuesOf(o).size() == 1 ? options.valuesOf(o).get(0) : getOutputBase();
 		log.debug("Output binary prefix: {}", outBasePath);
 		buildMac = options.has("m") || options.has("macosx");
 		buildUnix = options.has("u") || options.has("unix");
@@ -215,6 +212,7 @@ public class NativeCapsule {
 				final String jdkPreference = inCapsule.<Boolean>getAttribute(Attribute.<Boolean>named(Capsule.ATTR_JDK_REQUIRED.getKey())) ?
 					Jre.JDK_PREFERENCE_JDK_ONLY : null;
 				log.debug("Windows: JDK preferred? {}", Jre.JDK_PREFERENCE_JDK_ONLY.equals(jdkPreference) ? "true" : "false");
+				log.debug("Windows: JDK preferred = {}", Jre.JDK_PREFERENCE_JDK_ONLY.equals(jdkPreference) ? "true" : "false");
 				c.getJre().setJdkPreference(jdkPreference);
 			}
 
