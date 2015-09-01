@@ -60,9 +60,8 @@ public class NativeCapsule {
 
 	private static List<Path> tmpFiles = new ArrayList<>();
 	private static Path inCapsulePath;
-	private static String outCapsuleBasePath;
+	private static String outBasePath;
 	private static co.paralleluniverse.capsule.Capsule inCapsule;
-	private static boolean buildMac, buildLinux, buildWindows;
 	private static boolean buildMac, buildUnix, buildWindows;
 
 	public static void main(String[] args) throws IOException {
@@ -82,7 +81,7 @@ public class NativeCapsule {
 
 		inCapsulePath = Paths.get(options.valuesOf(c).get(0));
 		inCapsule = new CapsuleLauncher(inCapsulePath).newCapsule();
-		outCapsuleBasePath = options.valuesOf(o).size() == 1 ? options.valuesOf(o).get(0) : getOutputBase();
+		outBasePath = options.valuesOf(o).size() == 1 ? options.valuesOf(o).get(0) : getOutputBase();
 		buildMac = options.has("m") || options.has("macosx");
 		buildUnix = options.has("u") || options.has("unix");
 		buildWindows = options.has("w") || options.has("windows");
@@ -106,7 +105,7 @@ public class NativeCapsule {
 	}
 
 	private static void buildNative() {
-		final String outBase = getOutputBase(outCapsuleBasePath);
+		final String outBase = getOutputBase(outBasePath);
 		try {
 			final List<String> platforms = new ArrayList<>();
 			if (buildMac)
@@ -295,18 +294,18 @@ public class NativeCapsule {
 
 	private static void setLaunch4JBinDir() {
 		if (Platform.myPlatform().isMac())
-			copyBin("mac", new String[]{"ld", "windres"});
+			copyLaunch4JBins("mac", new String[]{"ld", "windres"});
 		else if (Platform.myPlatform().isLinux())
-			copyBin("linux", new String[]{"ld", "windres"});
+			copyLaunch4JBins("linux", new String[]{"ld", "windres"});
 		else if (Platform.myPlatform().isWindows())
-			copyBin("windows", new String[]{"ld.exe", "windres.exe"});
+			copyLaunch4JBins("windows", new String[]{"ld.exe", "windres.exe"});
 		else if (Platform.myPlatform().isUnix())
 			log.warn("Detected non-Linux Unix platform, assuming launch4j's 'ld' and 'windres' can be found on the path");
 		else
 			throw new RuntimeException(Platform.myPlatform() + " is not supported");
 	}
 
-	private static Path copyBin(String os, String[] bins) {
+	private static Path copyLaunch4JBins(String os, String[] bins) {
 		try {
 			final Path bindir = addTempFile(Files.createTempDirectory("capsule-launch4j-bin-"));
 			for (String filename : bins)
@@ -493,7 +492,8 @@ public class NativeCapsule {
 		return file;
 	}
 
-	public static Path addTempFile(Path file) {
+	private static Path addTempFile(Path file) {
+		log.debug("Adding temp file: {}", file.toAbsolutePath().normalize().toString());
 		tmpFiles.add(file);
 		return file;
 	}
