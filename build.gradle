@@ -58,6 +58,7 @@ dependencies {
 	compile "co.paralleluniverse:capsule-util:$capsuleVer"
 	compile "net.sf.jopt-simple:jopt-simple:$joptVer"
 	compile "org.slf4j:slf4j-api:$slf4jVer"
+	compile "ch.qos.logback:logback-classic:$logbackVer"
 	// compile 'commons-io:commons-io:2.4'
 	compile("net.sf.launch4j:launch4j:$launch4jVer") {
 		exclude group: 'com.ibm.icu', module: 'icu4j'
@@ -75,8 +76,6 @@ dependencies {
 
 	capsule "co.paralleluniverse:capsule:$capsuleVer"
 	capsule "co.paralleluniverse:capsule-maven:$capsuleVer"
-
-	runtime "ch.qos.logback:logback-classic:$logbackVer"
 }
 
 def getDependencies(config) {

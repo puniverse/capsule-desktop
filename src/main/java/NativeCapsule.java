@@ -7,6 +7,7 @@
  */
 
 import capsule.GUIListener;
+import ch.qos.logback.classic.Level;
 import co.paralleluniverse.capsule.*;
 import net.sf.launch4j.Builder;
 import net.sf.launch4j.Log;
@@ -68,20 +69,24 @@ public class NativeCapsule {
 	public static void main(String[] args) throws IOException {
 		final OptionParser parser = new OptionParser();
 		final OptionSpec<String> c = parser.acceptsAll(asList("c", "capsule")).withRequiredArg().ofType(String.class).describedAs("A single capsule pathname to build native binaries for");
-		final OptionSpec<String> o = parser.acceptsAll(asList("o", "output")).withRequiredArg().ofType(String.class).describedAs("The base output pathname of built binaries");
+		final OptionSpec<String> o = parser.acceptsAll(asList("o", "output")).withRequiredArg().ofType(String.class).describedAs("The base output pathname of built binaries (default = the capsule pathname)");
+		final OptionSpec<String> l = parser.acceptsAll(asList("l", "loglevel")).withRequiredArg().ofType(String.class).describedAs("Log level (default = INFO)");
 		parser.acceptsAll(asList("m", "macosx"), "Build Mac OS X binary");
 		parser.acceptsAll(asList("u", "unix"), "Build Unix binary");
 		parser.acceptsAll(asList("w", "windows"), "Build Windows binary");
 		parser.acceptsAll(asList("h", "?", "help"), "Show help").forHelp();
 		final OptionSet options = parser.parse(args);
 
-		if (!options.has(c) || options.valuesOf(c).size() != 1 || options.valuesOf(o).size() > 1) {
+		if (!options.has(c) || options.valuesOf(c).size() != 1 || options.valuesOf(o).size() > 1 || options.valuesOf(l).size() > 1) {
 			log.error("Command-line validation failed");
 			parser.printHelpOn(System.err);
 			System.exit(-1);
 		}
 
-		inCapsulePath = Paths.get(options.valuesOf(c).get(0));
+		if (options.has(l))
+			((ch.qos.logback.classic.Logger)LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME)).setLevel(Level.toLevel(options.valueOf(l), Level.INFO));
+
+		inCapsulePath = Paths.get(options.valueOf(c));
 		log.debug("Input capsule: {}", inCapsulePath.toAbsolutePath().normalize().toString());
 		inCapsule = new CapsuleLauncher(inCapsulePath).newCapsule();
 		outBasePath = options.valuesOf(o).size() == 1 ? options.valuesOf(o).get(0) : getOutputBase();
