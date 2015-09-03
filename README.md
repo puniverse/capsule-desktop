@@ -1,31 +1,40 @@
 # Capsule Desktop
 
-This **wrapper-only** [Caplet](https://github.com/puniverse/capsule#what-are-caplets) will build native desktop wrappers based on [launch4j](http://launch4j.sourceforge.net/) for the [capsule](https://github.com/puniverse/capsule) passed on the command line and will then run the native binary for the current platform (if found).
+This application will build Mac OS X, Linux and/or Windows native wrappers for a [capsule](https://github.com/puniverse/capsule] using [launch4j](http://launch4j.sourceforge.net/) in the latter case.
 
 ## Usage
 
-Run the `capsule-desktop` JAR with your capsule as its command line argument (use `-Dcapsule.log=verbose` for more information about what Capsule is doing):
+`capsule-desktop` is itself distributed as a capsule. Run it with the `-?` option to print the usage information:
 
-``` bash
-$ java -Dcapsule.log=verbose -jar capsule-desktop-0.1.jar my-capsule.jar my-capsule-arg1 ...
+```
+Option                                  Description          
+------                                  -----------          
+-?, -h, --help                          Show help            
+-c, --capsule <A single capsule                              
+  pathname to build native binaries                          
+  for>                                                       
+-l, --loglevel <Log level (default =                         
+  INFO)>                                                     
+-m, --macosx                            Build Mac OS X binary
+-o, --output <The base output pathname                       
+  of built binaries (default = the                           
+  capsule pathname)>                                         
+-u, --unix                              Build Unix binary    
+-w, --windows                           Build Windows binary 
 ```
 
-It can be run both against plain (e.g. "fat") capsules and [Maven-based](https://github.com/puniverse/capsule-desktop) ones.
-
-The native application(s) will be built in the same directory as your capsule and the appropriate one for your system will be launched.
+`capsule-desktop` can be run both against plain (e.g. "fat") capsules and [Maven-based](https://github.com/puniverse/capsule-desktop) ones.
 
 An [example Java Swing application is available](https://github.com/puniverse/capsule-gui-demo) that can conveniently be used to try out `capsule-desktop`.
 
-The following section explains additional manifest entries to tailor `capsule-desktop`'s behaviour, including the platforms for which native binaries should be built.
+The following section explains additional application-specific manifest entries that `capsule-desktop` can use.
 
 ## Additional Capsule manifest entries
 
-  * `GUI`: whether the `GUIMavenCapsule` caplet should be used instead of `MavenCapsule`. The former will launch a basic Swing-based window displaying dependencies retrieval progress and other Capsule runtime messages. In addition, when this option is active, Capsule won't wait for the application JVM process to complete before exiting.
+  * `GUI`: whether the `GUIMavenCapsule` caplet should be used instead of `MavenCapsule`. The former will launch a basic Swing-based window displaying dependencies retrieval progress. In addition, when this option is active, Capsule won't wait for the application JVM process to complete before exiting.
   * `Icon`: the icon to be used for the desktop application.
-  * `Platforms`: Native capsules to be built. One or more of: `CURRENT` (default), `macos`, `linux`, `windows`.
-  * `Native-Output-Pathname`: output pathname to be used as a basis by the native capsule build(s) (defaults to the capsule pathname itself minus the `.jar` extension). The Windows build will append `.exe` and the Mac OS X one will append `.app` while the Linux one won't add any suffix.
   * `Single-Instance`: if `true` will enforce a single-instance run policy for the native application built by `capsule-desktop`. It currently only works on Mac OS X and Windows.
-  * `Implementation-Vendor`: the provider's or vendor's name to be included in the native application's metadata. If this attribute is present then `Native-Description`, `Copyright` and `Internal-Name` are mandatory. Native metadata is currently only supported on Windows.
+  * `Implementation-Vendor`, `Native-Description`, `Copyright` and `Internal-Name`: if any of these native metadata entries is present then the other ones must be present as well. Native metadata is currently only supported on Windows
 
 ## License
 
