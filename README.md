@@ -1,6 +1,6 @@
 # Capsule Desktop
 
-This application will build Mac OS X, Linux and/or Windows native wrappers for a [capsule](https://github.com/puniverse/capsule] using [launch4j](http://launch4j.sourceforge.net/) in the latter case.
+This application will build Mac OS X, Linux and/or Windows native executables for a [capsule](https://github.com/puniverse/capsule).
 
 ## Usage
 
